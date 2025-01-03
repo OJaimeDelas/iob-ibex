@@ -148,7 +148,7 @@ def setup(py_params_dict):
                 ],
             },
         ],
-        "blocks": [],
+        "subblocks": [],
         "snippets": [
             {
                 "verilog_code": """
