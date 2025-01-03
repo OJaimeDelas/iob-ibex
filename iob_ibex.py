@@ -154,6 +154,7 @@ def setup(py_params_dict):
                 "verilog_code": """
 
 `include "prim_assert.sv"
+`include "ibex_pkg.sv"
 
 /*
  * AXI to Ibex LSU Protocol

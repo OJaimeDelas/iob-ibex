@@ -714,4 +714,4 @@ package ibex_pkg;
   };
 
   parameter pmp_mseccfg_t PmpMseccfgRst = '{rlb : 1'b0, mmwp: 1'b0, mml: 1'b0};
-endpackage
+endpackage : ibex_pkg
