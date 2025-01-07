@@ -7,6 +7,11 @@ module iob_ibex2axi_ff #(
   parameter IBEX_DATA_W      = 0,
   parameter IBEX_INTG_DATA_W = 0
 ) (
+    
+  // Genereral Ports
+  input logic clk_i,
+  input logic cke_i,
+  input logic arst_i, 
 
   // IBEX Ports
   input logic                            ibex_req_i, // Request - LSU requests access to the memory
@@ -47,7 +52,7 @@ module iob_ibex2axi_ff #(
   input                       bvalid_i,
   input [1:0]                 bresp_i,
   input [AXI_ID_W-1:0]        bid_i, 
-  output logic                bready_o, //It's an input because Memory answers
+  output logic                bready_o, 
 
   // AR Channel
   input                       arready_i,
@@ -71,86 +76,177 @@ module iob_ibex2axi_ff #(
   output logic                rready_o 
 );
 
-  // Internal signals
-  logic req_granted;
-  logic read_request;
-  logic write_request;
+  // Internal signals for stateful logic
+  wire awvalid_int, wvalid_int, arvalid_int, rvalid_int;
+  wire [AXI_ADDR_W-2:0] awaddr_int, araddr_int;
+  wire [AXI_DATA_W-1:0] wdata_int, rdata_int;
+  wire [AXI_DATA_W/8-1:0] wstrb_int;
+
+  // Register Module for AW Channel
+  iob_reg_re #(
+    .DATA_W(AXI_ADDR_W-2),
+    .RST_VAL(0)
+  ) awvalid_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(ibex_req_i & ibex_we_i),
+    .rst_i(0),
+    .data_i(ibex_addr_i),
+    .data_o(awaddr_int)
+  );
+
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) awvalid_reg_2 (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(1),
+    .rst_i(0),
+    .data_i(awvalid_next),
+    .data_o(awvalid_int)
+  );
+
+  // Register Module for W Channel
+  iob_reg_re #(
+    .DATA_W(AXI_DATA_W),
+    .RST_VAL(0)
+  ) wdata_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(ibex_req_i & ibex_we_i),
+    .rst_i(0),
+    .data_i(ibex_wdata_i),
+    .data_o(wdata_int)
+  );
+
+  iob_reg_re #(
+    .DATA_W(AXI_DATA_W/8),
+    .RST_VAL(0)
+  ) wstrb_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(ibex_req_i & ibex_we_i),
+    .rst_i(0),
+    .data_i(ibex_be_i),
+    .data_o(wstrb_int)
+  );
+
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) wvalid_reg_2 (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(1),
+    .rst_i(0),
+    .data_i(wvalid_next),
+    .data_o(wvalid_int)
+  );
+
+  // Register Module for AR Channel
+  iob_reg_re #(
+    .DATA_W(AXI_ADDR_W-2),
+    .RST_VAL(0)
+  ) arvalid_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(ibex_req_i & ~ibex_we_i),
+    .rst_i(0),
+    .data_i(ibex_addr_i),
+    .data_o(araddr_int)
+  );
+
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) arvalid_reg_2 (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(ibex_req_i & ~ibex_we_i),
+    .rst_i(0),
+    .data_i(arvalid_next),
+    .data_o(arvalid_int)
+  );
+
+  // Register Module for R Channel
+  iob_reg_re #(
+    .DATA_W(AXI_DATA_W),
+    .RST_VAL(0)
+  ) rdata_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(rvalid_i),
+    .rst_i(0),
+    .data_i(rdata_i),
+    .data_o(rdata_int)
+  );
+
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) rvalid_reg_2 (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(1),
+    .rst_i(0),
+    .data_i(rvalid_next),
+    .data_o(rvalid_int)
+  );
   
-  // LSU Protocol: LSU sends requests through 'ibex_req_i', specifying read/write with 'ibex_we_i'.
-  // The load-store unit (LSU) interacts with memory, sending addresses and data, and expects
-  // acknowledgment signals such as 'ibex_gnt_o' (grant) and 'ibex_rvalid_o' (data valid).
+  // Assign next values
+  assign rvalid_next  = rvalid_i? 1'b1 : 1'b0;
+  assign arvalid_next = (ibex_req_i & ~ibex_we_i)?  1'b1 : 1'b0;
+  assign wvalid_next  = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
+  assign awvalid_next = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
 
-  assign read_request  = ibex_ & ~ibex_we_i;
-  assign write_request = ibex_req_i & ibex_we_i;
-
-  //--------------------- Write Address Channel ----------------------
-  // Handles the address phase of write transactions on the AW channel.
-  always_ff @(posedge ibex_req_i or posedge awready_i) begin
-    if (write_request) begin
-      awvalid_o <= 1'b1;
-      awaddr_o  <= ibex_addr_i;
-    end
-    if (awready_i) awvalid_o <= 1'b0; // Handshake complete
-  end
-
-  //--------------------- Write Data Channel -------------------------
-  // Transfers write data and byte enables on the W channel.
-  always_ff @(posedge ibex_req_i or posedge wready_i) begin
-    if (write_request) begin
-      wvalid_o <= 1'b1;
-      wdata_o  <= ibex_wdata_i;
-      wstrb_o  <= ibex_be_i; // Byte enables
-      wlast_o  <= 1'b1; // Single beat transaction
-    end
-    if (wready_i) wvalid_o <= 1'b0; // Handshake complete
-  end
-
-  //--------------------- Write Response Channel ---------------------
-  // Monitors the write response (B channel) and detects errors.
-  always_ff @(posedge bvalid_i) begin
-    if (bvalid_i) begin
-      bready_o <= 1'b1;
-      ibex_err_o    <= (bresp_i != 2'b00); // AXI error check
-    end else begin
-      bready_o <= 1'b0;
-    end
-  end
-
-  //--------------------- Read Address Channel -----------------------
-  // Handles the address phase of read transactions on the AR channel.
-  always_ff @(posedge ibex_req_i or posedge arready_i) begin
-    if (read_request) begin
-      arvalid_o <= 1'b1;
-      araddr_o  <= ibex_addr_i;
-    end
-    if (arready_i) arvalid_o <= 1'b0; // Handshake complete
-  end
-
-  //--------------------- Read Data Channel --------------------------
-  // Receives read data (R channel) and detects errors.
-  always_ff @(posedge rvalid_i) begin
-    if (rvalid_i) begin
-      rready_o <= 1'b1;
-      ibex_rdata_o  <= rdata_i; // Read data
-      ibex_err_o    <= (rresp_i != 2'b00); // AXI error check
-      ibex_rvalid_o <= 1'b1; // Signal IBEX with valid data
-    end else begin
-      rready_o <= 1'b0;
-      ibex_rvalid_o <= 1'b0;
-    end
-  end
-
-  //---------------------- Grant Logic --------------------------------
-  // Generates the grant signal when AW or AR channels are ready.
-  always_comb begin
-    ibex_gnt_o = ibex_req_i & (awready_i | arready_i);
-  end
-
+  // Assign final output signals
+  assign awvalid_o = awvalid_int;
+  assign awaddr_o = awaddr_int;
   
-  ibex_err_o = (bvalid_i && bresp_i != 2'b00) || (rvalid_i && rresp_i != 2'b00);
+  assign wvalid_o  = wvalid_int;
+  assign wdata_o = wdata_int;
+  
+  assign arvalid_o = arvalid_int;
+  assign araddr_o = araddr_int;
+  
+  assign rready_o  = 1'b1; // Always ready for read transactions
+  
+  assign ibex_rdata_o = rdata_int;
+  assign ibex_rvalid_o = rvalid_int;
 
-  //--------------------- Non-Implemented Ports -----------------------
-  // Default assignments for unused AXI signals.
+  // AXI Error Handling
+  assign ibex_err_o = (bvalid_i && bresp_i != 2'b00) || (rvalid_i && rresp_i != 2'b00);
+
+  // Grant Logic
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) gnt_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_i),
+    .en_i(1),
+    .rst_i(0),
+    .data_i(ibex_gnt_value),
+    .data_o(ibex_gnt_o)
+  );
+  
+  // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
+  assign ibex_granted = ibex_req_i && ((awready_i && wready_i && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));
+  assign ibex_gnt_value = ibex_granted ? 1'b1 : 1'b0;
+  
+  
+  // Default assignments for unused AXI signals
   assign awprot_o  = '0;
   assign awid_o    = '0;
   assign awlen_o   = '0;

@@ -3,7 +3,7 @@
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
 
-module iob_ibex #(
+module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ID_W         = `IOB_IBEX_AXI_ID_W,
    parameter AXI_ADDR_W       = `IOB_IBEX_AXI_ADDR_W,
    parameter AXI_DATA_W       = `IOB_IBEX_AXI_DATA_W,
@@ -210,11 +210,11 @@ module iob_ibex #(
 
       // IBEX Ports
       .ibex_req_i(instr_req_o),  // Request - LSU requests access to the memory
-      .ibex_we_i('b0),  // Write enable: 1 = write, 0 = read
-      .ibex_be_i('b0),  // Byte enable - Refers which bytes to access. Allows half-word, etc
+      .ibex_we_i(0),  // Write enable: 1 = write, 0 = read
+      .ibex_be_i(0),  // Byte enable - Refers which bytes to access. Allows half-word, etc
       .ibex_addr_i(instr_addr_o),  // Address from the LSU
-      .ibex_wdata_i('b0),  // Write data
-      .ibex_wdata_intg_i('b0),  // Extra parity/integrity bits
+      .ibex_wdata_i(0),  // Write data
+      .ibex_wdata_intg_i(0),  // Extra parity/integrity bits
 
       .ibex_gnt_o       (instr_gnt_i),         // Access Granted signal from memory
       .ibex_rvalid_o    (instr_rvalid_i),      // Read data valid - There's data in rdata and/or err
@@ -298,7 +298,7 @@ module iob_ibex #(
    /**
  * Top level module of the ibex RISC-V core
  */
-   module iob_ibex import ibex_pkg::*; #(
+   ibex_top #(
       .PMPEnable       (PMPEnable),
       .PMPGranularity  (PMPGranularity),
       .PMPNumRegions   (PMPNumRegions),
@@ -319,7 +319,7 @@ module iob_ibex #(
       .DmHaltAddr      (32'h00000000),
       .DmExceptionAddr (32'h00000000)
    ) u_top (
-      .clk_i (clk_sys),
+      .clk_i (clk_i),
       .rst_ni(cpu_reset),
 
       .test_en_i  ('b0),
