@@ -1,11 +1,11 @@
-module iob_ibex2axi_ff #(
+module iob_ibex2axi #(
   parameter AXI_ID_W         = 0,
-  parameter AXI_ADDR_W       = 0,
-  parameter AXI_DATA_W       = 0,
-  parameter AXI_LEN_W        = 0,
-  parameter IBEX_ADDR_W      = 0,
-  parameter IBEX_DATA_W      = 0,
-  parameter IBEX_INTG_DATA_W = 0
+  parameter AXI_ADDR_W       = 32,
+  parameter AXI_DATA_W       = 32,
+  parameter AXI_LEN_W        = 8,
+  parameter IBEX_ADDR_W      = 32,
+  parameter IBEX_DATA_W      = 32,
+  parameter IBEX_INTG_DATA_W = 7
 ) (
     
   // Genereral Ports
@@ -17,7 +17,7 @@ module iob_ibex2axi_ff #(
   input logic                            ibex_req_i, // Request - LSU requests access to the memory
   input logic                            ibex_we_i,  // Write enable: 1 = write, 0 = read
   input logic [3:0]                      ibex_be_i,  // Byte enable - Refers which bytes to access. Allows half-word, etc
-  input logic [IBEX_ADDR_W -1:0]         ibex_addr_i, // Address from the LSU
+  input logic [IBEX_ADDR_W -2 -1:0]         ibex_addr_i, // Address from the LSU
   input logic [IBEX_DATA_W -1:0]         ibex_wdata_i, // Write data
   input logic [IBEX_INTG_DATA_W -1:0]    ibex_wdata_intg_i, // Extra parity/integrity bits
 
@@ -31,7 +31,7 @@ module iob_ibex2axi_ff #(
   // AW Channel
   input                       awready_i,
   output logic                awvalid_o, //It's an output because CPU sends the Addr
-  output logic [AXI_ADDR_W-2:0] awaddr_o,
+  output logic [AXI_ADDR_W-2 -1:0] awaddr_o,
   output logic [2:0]          awprot_o, 
   output logic [AXI_ID_W-1:0] awid_o,
   output logic [AXI_LEN_W-1:0] awlen_o,
@@ -57,7 +57,7 @@ module iob_ibex2axi_ff #(
   // AR Channel
   input                       arready_i,
   output logic                arvalid_o, //It's an output because CPU sends the Addr
-  output logic [AXI_ADDR_W-2:0] araddr_o,
+  output logic [AXI_ADDR_W-2-1:0] araddr_o,
   output logic [2:0]          arprot_o,
   output logic [AXI_ID_W-1:0] arid_o,
   output logic [AXI_LEN_W-1:0] arlen_o,
@@ -78,7 +78,7 @@ module iob_ibex2axi_ff #(
 
   // Internal signals for stateful logic
   wire awvalid_int, wvalid_int, arvalid_int, rvalid_int;
-  wire [AXI_ADDR_W-2:0] awaddr_int, araddr_int;
+  wire [AXI_ADDR_W-2 -1:0] awaddr_int, araddr_int, ibex_addr_int;
   wire [AXI_DATA_W-1:0] wdata_int, rdata_int;
   wire [AXI_DATA_W/8-1:0] wstrb_int;
 
@@ -91,8 +91,8 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(ibex_req_i & ibex_we_i),
-    .rst_i(0),
-    .data_i(ibex_addr_i),
+    .rst_i('0),
+    .data_i(ibex_addr_int),
     .data_o(awaddr_int)
   );
 
@@ -103,8 +103,8 @@ module iob_ibex2axi_ff #(
     .clk_i(clk_i),
     .cke_i(cke_i),
     .arst_i(arst_i),
-    .en_i(1),
-    .rst_i(0),
+    .en_i('1),
+    .rst_i('0),
     .data_i(awvalid_next),
     .data_o(awvalid_int)
   );
@@ -118,7 +118,7 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(ibex_req_i & ibex_we_i),
-    .rst_i(0),
+    .rst_i('0),
     .data_i(ibex_wdata_i),
     .data_o(wdata_int)
   );
@@ -131,7 +131,7 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(ibex_req_i & ibex_we_i),
-    .rst_i(0),
+    .rst_i('0),
     .data_i(ibex_be_i),
     .data_o(wstrb_int)
   );
@@ -143,8 +143,8 @@ module iob_ibex2axi_ff #(
     .clk_i(clk_i),
     .cke_i(cke_i),
     .arst_i(arst_i),
-    .en_i(1),
-    .rst_i(0),
+    .en_i('1),
+    .rst_i('0),
     .data_i(wvalid_next),
     .data_o(wvalid_int)
   );
@@ -158,7 +158,7 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(ibex_req_i & ~ibex_we_i),
-    .rst_i(0),
+    .rst_i('0),
     .data_i(ibex_addr_i),
     .data_o(araddr_int)
   );
@@ -171,7 +171,7 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(ibex_req_i & ~ibex_we_i),
-    .rst_i(0),
+    .rst_i('0),
     .data_i(arvalid_next),
     .data_o(arvalid_int)
   );
@@ -185,7 +185,7 @@ module iob_ibex2axi_ff #(
     .cke_i(cke_i),
     .arst_i(arst_i),
     .en_i(rvalid_i),
-    .rst_i(0),
+    .rst_i('0),
     .data_i(rdata_i),
     .data_o(rdata_int)
   );
@@ -197,8 +197,8 @@ module iob_ibex2axi_ff #(
     .clk_i(clk_i),
     .cke_i(cke_i),
     .arst_i(arst_i),
-    .en_i(1),
-    .rst_i(0),
+    .en_i('1),
+    .rst_i('0),
     .data_i(rvalid_next),
     .data_o(rvalid_int)
   );
@@ -235,8 +235,8 @@ module iob_ibex2axi_ff #(
     .clk_i(clk_i),
     .cke_i(cke_i),
     .arst_i(arst_i),
-    .en_i(1),
-    .rst_i(0),
+    .en_i('1),
+    .rst_i('0),
     .data_i(ibex_gnt_value),
     .data_o(ibex_gnt_o)
   );

@@ -9,13 +9,15 @@
   `define PRIM_DEFAULT_IMPL prim_pkg::ImplGeneric
 `endif
 
+
+
 // This is to prevent AscentLint warnings in the generated
 // abstract prim wrapper. These warnings occur due to the .*
 // use. TODO: we may want to move these inline waivers
 // into a separate, generated waiver file for consistency.
 //ri lint_check_off OUTPUT_NOT_DRIVEN INPUT_NOT_READ HIER_BRANCH_NOT_READ
+//module prim_buf import prim_pkg::*;
 module prim_buf
-
 #(
 
   parameter int Width = 1
