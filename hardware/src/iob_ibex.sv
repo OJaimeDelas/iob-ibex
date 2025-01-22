@@ -288,24 +288,24 @@ module iob_ibex import ibex_pkg::*; #(
  * Some parameters' definitions
  */
 
-   parameter bit SecureIbex = 1'b0;
-   parameter bit ICacheScramble = 1'b0;
-   parameter bit PMPEnable = 1'b0;
-   parameter int unsigned PMPGranularity = 0;
-   parameter int unsigned PMPNumRegions = 4;
-   parameter int unsigned MHPMCounterNum = 0;
-   parameter int unsigned MHPMCounterWidth = 40;
-   parameter bit RV32E = 1'b0;
-   parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MNone;
-   parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BNone;
-   parameter ibex_pkg::regfile_e RegFile = ibex_pkg::RegFileFF;
-   parameter bit BranchTargetALU = 1'b0;
-   parameter bit WritebackStage = 1'b0;
-   parameter bit ICache = 1'b0;
-   parameter bit DbgTriggerEn = 1'b0;
-   parameter bit ICacheECC = 1'b0;
-   parameter bit BranchPredictor = 1'b0;
-   //parameter                     SRAMInitFile             = "";
+   parameter bit                 RV32E                    = 1'b0;
+   parameter ibex_pkg::rv32m_e   RV32M                    = ibex_pkg::RV32MSingleCycle;
+   parameter ibex_pkg::rv32b_e   RV32B                    = ibex_pkg::RV32BOTEarlGrey;
+   parameter ibex_pkg::regfile_e RegFile                  = ibex_pkg::RegFileFF;
+   parameter bit                 BranchTargetALU          = 1'b1;
+   parameter bit                 WritebackStage           = 1'b1;
+   parameter bit                 ICache                   = 1'b1;
+   parameter bit                 ICacheECC                = 1'b1;
+   parameter bit                 ICacheScramble           = 1'b1;
+   parameter bit                 BranchPredictor          = 1'b0;
+   parameter bit                 DbgTriggerEn             = 1'b1;
+   parameter bit                 SecureIbex               = 1'b1;
+   parameter bit                 PMPEnable                = 1'b1;
+   parameter int unsigned        PMPGranularity           = 0;
+   parameter int unsigned        PMPNumRegions            = 16;
+   parameter int unsigned        MHPMCounterNum           = 10;
+   parameter int unsigned        MHPMCounterWidth         = 32;
+   parameter                     SRAMInitFile             = "";
 
    /**
  * Top level module of the ibex RISC-V core
@@ -340,7 +340,7 @@ module iob_ibex import ibex_pkg::*; #(
 
       .hart_id_i  ('0),
       // First instruction executed is at 0x0 + 0x80
-      .boot_addr_i('0),
+      .boot_addr_i(32'h80000000),
 
       // Instruction memory interface
       .instr_req_o       (instr_req_o),
