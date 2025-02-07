@@ -7,17 +7,24 @@ module iob_ibex2axi #(
   parameter IBEX_DATA_W      = 32,
   parameter IBEX_INTG_DATA_W = 7
 ) (
+
+  input logic data_allowed,
     
   // Genereral Ports
   input logic clk_i,
   input logic cke_i,
   input logic arst_i, 
 
+  // Multiple Access Control    
+  input logic                            DualModules, // Are two of these modules accessing the same memory? dbus and ibus, i.e.
+  input logic [1:0]                           converter_id,
+  input logic [1:0]                            turn_identifier,
+
   // IBEX Ports
   input logic                            ibex_req_i, // Request - LSU requests access to the memory
   input logic                            ibex_we_i,  // Write enable: 1 = write, 0 = read
   input logic [3:0]                      ibex_be_i,  // Byte enable - Refers which bytes to access. Allows half-word, etc
-  input logic [IBEX_ADDR_W -2 -1:0]         ibex_addr_i, // Address from the LSU
+  input logic [IBEX_ADDR_W -2 -1:0]      ibex_addr_i, // Address from the LSU
   input logic [IBEX_DATA_W -1:0]         ibex_wdata_i, // Write data
   input logic [IBEX_INTG_DATA_W -1:0]    ibex_wdata_intg_i, // Extra parity/integrity bits
 
@@ -77,36 +84,113 @@ module iob_ibex2axi #(
 );
 
   // Internal signals for stateful logic
-  wire awvalid_int, wvalid_int, arvalid_int, rvalid_int;
-  wire [AXI_ADDR_W-2 -1:0] awaddr_int, araddr_int, ibex_addr_int;
-  wire [AXI_DATA_W-1:0] wdata_int, rdata_int;
-  wire [AXI_DATA_W/8-1:0] wstrb_int;
+  wire awvalid_internal, wvalid_internal, arvalid_internal, rvalid_internal;
+  wire [AXI_ADDR_W-2 -1:0] awaddr_internal, araddr_internal;
+  wire [AXI_ADDR_W -1:0] awaddr_int, araddr_int, ibex_addr_int;
+  wire [AXI_DATA_W-1:0] wdata_internal, rdata_internal;
+  wire [AXI_DATA_W/8-1:0] wstrb_internal;
+  wire arst_n, awready_handshake, wready_handshake;
+  reg ibex_granted, valid_turn, stall_turn;
+
+  //DualModule functioning
+  always_comb begin
+    if ( DualModules == '1) begin
+      if ( converter_id == turn_identifier | data_allowed) begin
+        valid_turn = 1'b1;
+        assign awvalid_o = awvalid_internal;
+        assign wvalid_o  = wvalid_internal;
+        assign arvalid_o = arvalid_internal;
+
+        // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
+        ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));   
+      end else if ( 2'b11 == turn_identifier) begin
+        // Some functionality needs to remain in a stall, so that the cpu leaves that state
+        stall_turn = 1'b1;
+
+        assign awvalid_o = awvalid_internal;
+        assign wvalid_o  = wvalid_internal;
+        assign arvalid_o = arvalid_internal;
+
+        // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
+        ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));   
+
+      end else begin
+        stall_turn = '0;
+        valid_turn = '0;
+        assign awvalid_o = '0;
+        assign wvalid_o  = '0;
+        assign arvalid_o = '0;
+        ibex_granted = '0;
+      end
+
+    end else begin
+      stall_turn = '1;
+      valid_turn = '1;
+      assign awvalid_o = awvalid_internal;
+      assign wvalid_o  = wvalid_internal;
+      assign arvalid_o = arvalid_internal;
+      ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));
+    end
+
+  end
+
+  assign ibex_gnt_value = ibex_granted ? 1'b1 : 1'b0;
+
+  assign arst_n = arst_i;
+
+  // Register Module for AWADDR Handshake
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) awready_handshake_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_n | (~ibex_req_i) | ibex_granted), // Reset this value if the operation is completed/dropped
+    .en_i(awready_i & ibex_req_i & ibex_we_i & (valid_turn | stall_turn)),
+    .rst_i('0),
+    .data_i('1),
+    .data_o(awready_handshake)
+  );
+
+  // Register Module for WDATA Handshake
+  iob_reg_re #(
+    .DATA_W(1),
+    .RST_VAL(0)
+  ) wready_handshake_reg (
+    .clk_i(clk_i),
+    .cke_i(cke_i),
+    .arst_i(arst_n | (~ibex_req_i) | ibex_granted), // Reset this value if the operation is completed/dropped
+    .en_i(wready_i & ibex_req_i & ibex_we_i & (valid_turn | stall_turn)),
+    .rst_i('0),
+    .data_i('1),
+    .data_o(wready_handshake)
+  );
 
   // Register Module for AW Channel
   iob_reg_re #(
     .DATA_W(AXI_ADDR_W-2),
     .RST_VAL(0)
-  ) awvalid_reg (
+  ) awaddr_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i(ibex_req_i & ibex_we_i),
+    .arst_i(arst_n),
+    .en_i(ibex_req_i & ibex_we_i & valid_turn),
     .rst_i('0),
-    .data_i(ibex_addr_int),
-    .data_o(awaddr_int)
+    .data_i(ibex_addr_i),
+    .data_o(awaddr_internal)
   );
 
   iob_reg_re #(
     .DATA_W(1),
     .RST_VAL(0)
-  ) awvalid_reg_2 (
+  ) awvalid_next_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i('1),
+    .arst_i(arst_n),
+    .en_i((valid_turn | stall_turn)),
     .rst_i('0),
     .data_i(awvalid_next),
-    .data_o(awvalid_int)
+    .data_o(awvalid_internal)
   );
 
   // Register Module for W Channel
@@ -116,11 +200,11 @@ module iob_ibex2axi #(
   ) wdata_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i(ibex_req_i & ibex_we_i),
+    .arst_i(arst_n),
+    .en_i(ibex_req_i & ibex_we_i & valid_turn),
     .rst_i('0),
     .data_i(ibex_wdata_i),
-    .data_o(wdata_int)
+    .data_o(wdata_internal)
   );
 
   iob_reg_re #(
@@ -129,51 +213,51 @@ module iob_ibex2axi #(
   ) wstrb_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i(ibex_req_i & ibex_we_i),
+    .arst_i(arst_n),
+    .en_i(ibex_req_i & ibex_we_i & valid_turn),
     .rst_i('0),
     .data_i(ibex_be_i),
-    .data_o(wstrb_int)
+    .data_o(wstrb_internal)
   );
 
   iob_reg_re #(
     .DATA_W(1),
     .RST_VAL(0)
-  ) wvalid_reg_2 (
+  ) wvalid_next_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i('1),
+    .arst_i(arst_n),
+    .en_i((valid_turn | stall_turn)),
     .rst_i('0),
     .data_i(wvalid_next),
-    .data_o(wvalid_int)
+    .data_o(wvalid_internal)
   );
 
   // Register Module for AR Channel
   iob_reg_re #(
     .DATA_W(AXI_ADDR_W-2),
     .RST_VAL(0)
-  ) arvalid_reg (
+  ) araddr_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i(ibex_req_i & ~ibex_we_i),
+    .arst_i(arst_n),
+    .en_i(ibex_req_i & ~ibex_we_i & valid_turn),
     .rst_i('0),
     .data_i(ibex_addr_i),
-    .data_o(araddr_int)
+    .data_o(araddr_internal)
   );
 
   iob_reg_re #(
     .DATA_W(1),
     .RST_VAL(0)
-  ) arvalid_reg_2 (
+  ) arvalid_next_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i(ibex_req_i & ~ibex_we_i),
+    .arst_i(arst_n),
+    .en_i(ibex_req_i & ~ibex_we_i & (valid_turn | stall_turn)),
     .rst_i('0),
     .data_i(arvalid_next),
-    .data_o(arvalid_int)
+    .data_o(arvalid_internal)
   );
 
   // Register Module for R Channel
@@ -183,11 +267,11 @@ module iob_ibex2axi #(
   ) rdata_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
+    .arst_i(arst_n),
     .en_i(rvalid_i),
     .rst_i('0),
     .data_i(rdata_i),
-    .data_o(rdata_int)
+    .data_o(rdata_internal)
   );
 
   iob_reg_re #(
@@ -196,11 +280,11 @@ module iob_ibex2axi #(
   ) rvalid_reg_2 (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
-    .en_i('1),
+    .arst_i(arst_n),
+    .en_i(valid_turn),
     .rst_i('0),
     .data_i(rvalid_next),
-    .data_o(rvalid_int)
+    .data_o(rvalid_internal)
   );
   
   // Assign next values
@@ -209,20 +293,22 @@ module iob_ibex2axi #(
   assign wvalid_next  = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
   assign awvalid_next = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
 
-  // Assign final output signals
-  assign awvalid_o = awvalid_int;
-  assign awaddr_o = awaddr_int;
+  // Assign final output signals - Some signals depend on DualModules
+  assign awaddr_o = awaddr_internal;
   
-  assign wvalid_o  = wvalid_int;
-  assign wdata_o = wdata_int;
+  assign wdata_o = wdata_internal;
   
-  assign arvalid_o = arvalid_int;
-  assign araddr_o = araddr_int;
+  assign araddr_o = araddr_internal;
   
   assign rready_o  = 1'b1; // Always ready for read transactions
   
-  assign ibex_rdata_o = rdata_int;
-  assign ibex_rvalid_o = rvalid_int;
+  assign ibex_rdata_o = rdata_internal;
+  assign ibex_rvalid_o = rvalid_internal;
+
+  // Make the full addresses available
+  assign awaddr_int = {awaddr_internal, 2'b0};
+  assign araddr_int = {araddr_internal , 2'b0};
+  assign ibex_addr_int = {ibex_addr_i , 2'b0};
 
   // AXI Error Handling
   assign ibex_err_o = (bvalid_i && bresp_i != 2'b00) || (rvalid_i && rresp_i != 2'b00);
@@ -234,18 +320,13 @@ module iob_ibex2axi #(
   ) gnt_reg (
     .clk_i(clk_i),
     .cke_i(cke_i),
-    .arst_i(arst_i),
+    .arst_i(arst_n),
     .en_i('1),
     .rst_i('0),
     .data_i(ibex_gnt_value),
     .data_o(ibex_gnt_o)
   );
-  
-  // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
-  assign ibex_granted = ibex_req_i && ((awready_i && wready_i && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));
-  assign ibex_gnt_value = ibex_granted ? 1'b1 : 1'b0;
-  
-  
+
   // Default assignments for unused AXI signals
   assign awprot_o  = '0;
   assign awid_o    = '0;

@@ -43,6 +43,9 @@ module ibex_top import ibex_pkg::*; #(
   parameter logic [SCRAMBLE_KEY_W-1:0]   RndCnstIbexKey          = RndCnstIbexKeyDefault,
   parameter logic [SCRAMBLE_NONCE_W-1:0] RndCnstIbexNonce        = RndCnstIbexNonceDefault
 ) (
+
+  output logic stalling_o,
+
   // Clock and Reset
   input  logic                         clk_i,
   input  logic                         rst_ni,
@@ -152,7 +155,7 @@ module ibex_top import ibex_pkg::*; #(
   localparam bit          RegFileWrenCheck      = SecureIbex;
   localparam bit          RegFileRdataMuxCheck  = SecureIbex;
   localparam int unsigned RegFileDataWidth      = RegFileECC ? 32 + 7 : 32;
-  localparam bit          MemECC                = SecureIbex;
+  localparam bit          MemECC                = '0;
   localparam int unsigned MemDataWidth          = MemECC ? 32 + 7 : 32;
   // Icache parameters
   localparam int unsigned BusSizeECC        = ICacheECC ? (BUS_SIZE + 7) : BUS_SIZE;
@@ -282,6 +285,9 @@ module ibex_top import ibex_pkg::*; #(
     assign unused_intg = ^{instr_rdata_intg_i, data_rdata_intg_i};
   end
 
+  wire stalling_wire;
+  assign stalling_o = stalling_wire; 
+
   ibex_core #(
     .PMPEnable        (PMPEnable),
     .PMPGranularity   (PMPGranularity),
@@ -316,6 +322,7 @@ module ibex_top import ibex_pkg::*; #(
     .DmHaltAddr       (DmHaltAddr),
     .DmExceptionAddr  (DmExceptionAddr)
   ) u_ibex_core (
+    .stalling_o(stalling_wire),
     .clk_i(clk),
     .rst_ni,
 

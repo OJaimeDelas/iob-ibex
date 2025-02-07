@@ -47,6 +47,9 @@ module ibex_core import ibex_pkg::*; #(
   parameter int unsigned            DmHaltAddr       = 32'h1A110800,
   parameter int unsigned            DmExceptionAddr  = 32'h1A110808
 ) (
+
+  output logic stalling_o,
+
   // Clock and Reset
   input  logic                         clk_i,
   // Internally generated resets in ibex_lockstep cause IMPERFECTSCH warnings.
@@ -536,6 +539,9 @@ module ibex_core import ibex_pkg::*; #(
     assign instr_exec      = fetch_enable_i[0];
   end
 
+  wire stalling_wire;
+  assign stalling_o = stalling_wire; 
+
   //////////////
   // ID stage //
   //////////////
@@ -550,6 +556,7 @@ module ibex_core import ibex_pkg::*; #(
     .BranchPredictor(BranchPredictor),
     .MemECC         (MemECC)
   ) id_stage_i (
+    .stalling_o(stalling_wire),
     .clk_i (clk_i),
     .rst_ni(rst_ni),
 

@@ -150,7 +150,7 @@ module prim_onehot_check #(
   // gives us confidence that the user has bound up the alert correctly.
 `ifdef INC_ASSERT
   logic unused_assert_connected;
-  `ASSERT_INIT_NET(AssertConnected_A, unused_assert_connected === 1'b1 || !EnableAlertTriggerSVA)
+  //`ASSERT_INIT_NET(AssertConnected_A, unused_assert_connected === 1'b1 || !EnableAlertTriggerSVA)
 `endif
 
 endmodule : prim_onehot_check

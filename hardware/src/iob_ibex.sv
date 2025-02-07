@@ -96,6 +96,7 @@ module iob_ibex import ibex_pkg::*; #(
    input  [      AXI_ID_W-1:0] dbus_axi_bid_i
 );
    // cpu_reset
+   wire                        cpu_reset_neg;
    wire                        cpu_reset;
    // data_
    wire                        data_req_o;
@@ -120,10 +121,37 @@ module iob_ibex import ibex_pkg::*; #(
    wire [IBEX_INTG_DATA_W-1:0] instr_rdata_intg_i;
    wire                        instr_err_i;
 
+   // full addresses
+   wire [AXI_ADDR_W -1:0] ibus_axi_araddr_o_int;
+   wire [AXI_ADDR_W -1:0] ibus_axi_awaddr_o_int;
+   wire [AXI_ADDR_W -1:0] dbus_axi_araddr_o_int;
+   wire [AXI_ADDR_W -1:0] dbus_axi_awaddr_o_int;
+   wire [1:0] curr_turn;
+   wire stalling_wire, data_allow_wire;
+
 
    /*
  * AXI to Ibex LSU Protocol
  */
+
+   //Turn Order Module
+   //This allows for 2 modules to access the same memory
+   iob_ibex2axi_turn ibex2axi_turn (
+
+      //Control
+      .clk_i(clk_i),
+      .cke_i(cke_i),
+      .arst_i(arst_i),
+
+      .req_1(instr_req_o),
+      .gnt_1(instr_gnt_i),
+      .req_0(data_req_o),
+      .gnt_0(data_gnt_i),
+      //.stalling_i('0), //if ibex stalls, this should too
+      .stalling_i(stalling_wire), //if ibex stalls, this should too
+      .data_allowed(data_allow_wire),
+      .curr_turn(curr_turn) // 2-bit output to represent different turns
+   );
 
    // Data Bus
    iob_ibex2axi #(
@@ -135,11 +163,17 @@ module iob_ibex import ibex_pkg::*; #(
       .IBEX_DATA_W     (IBEX_DATA_W),
       .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
    ) data_iob2ibex (
+      .data_allowed(data_allow_wire),
 
       //Control
       .clk_i(clk_i),
       .cke_i(cke_i),
       .arst_i(arst_i),
+       
+      // Multiple Access Control    
+      .DualModules('1), // Are two of these modules accessing the same memory? dbus and ibus, i.e.
+      .converter_id(2'b01),  // 2- instr, 1- data
+      .turn_identifier(curr_turn),
 
       // IBEX Ports
       .ibex_req_i(data_req_o),  // Request - LSU requests access to the memory
@@ -214,11 +248,17 @@ module iob_ibex import ibex_pkg::*; #(
       .IBEX_DATA_W     (IBEX_DATA_W),
       .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
    ) instr_iob2ibex (
+      .data_allowed('0),
 
       //Control
       .clk_i(clk_i),
       .cke_i(cke_i),
       .arst_i(arst_i),
+       
+      // Multiple Access Control    
+      .DualModules('1), // Are two of these modules accessing the same memory? dbus and ibus, i.e.
+      .converter_id(2'b10), // 2- instr, 1- data
+      .turn_identifier(curr_turn),
 
       // IBEX Ports
       .ibex_req_i(instr_req_o),  // Request - LSU requests access to the memory
@@ -294,9 +334,9 @@ module iob_ibex import ibex_pkg::*; #(
    parameter ibex_pkg::regfile_e RegFile                  = ibex_pkg::RegFileFF;
    parameter bit                 BranchTargetALU          = 1'b1;
    parameter bit                 WritebackStage           = 1'b1;
-   parameter bit                 ICache                   = 1'b1;
-   parameter bit                 ICacheECC                = 1'b1;
-   parameter bit                 ICacheScramble           = 1'b1;
+   parameter bit                 ICache                   = 1'b0;
+   parameter bit                 ICacheECC                = 1'b0;
+   parameter bit                 ICacheScramble           = 1'b0;
    parameter bit                 BranchPredictor          = 1'b0;
    parameter bit                 DbgTriggerEn             = 1'b1;
    parameter bit                 SecureIbex               = 1'b1;
@@ -331,15 +371,16 @@ module iob_ibex import ibex_pkg::*; #(
       .DmHaltAddr      ('0),
       .DmExceptionAddr ('0)
    ) u_top (
+      .stalling_o(stalling_wire),
       .clk_i (clk_i),
-      .rst_ni(cpu_reset),
+      .rst_ni(cpu_reset_neg),
 
       .test_en_i  ('0),
       .scan_rst_ni('1),
       .ram_cfg_i  ('0),
 
       .hart_id_i  ('0),
-      // First instruction executed is at 0x0 + 0x80
+      // First instruction executed is at 0x7FFFFF80 + 0x80 = 0x80000000
       .boot_addr_i(32'h80000000),
 
       // Instruction memory interface
@@ -389,7 +430,8 @@ module iob_ibex import ibex_pkg::*; #(
    assign instr_addr_o = instr_addr_int[31:2];
    assign data_addr_o = data_addr_int[31:2];
 
-   assign cpu_reset          = rst_i | arst_i;
+   assign cpu_reset         = (rst_i) | (arst_i);
+   assign cpu_reset_neg          = !(cpu_reset);
 
    assign ibus_axi_awvalid_o = 1'b0;
    assign ibus_axi_awaddr_o  = {AXI_ADDR_W - 2{1'b0}};
@@ -406,6 +448,12 @@ module iob_ibex import ibex_pkg::*; #(
    assign ibus_axi_wstrb_o   = {AXI_DATA_W / 8{1'b0}};
    assign ibus_axi_wlast_o   = 1'b0;
    assign ibus_axi_bready_o  = 1'b0;
+
+   //Integrer addresses
+   assign ibus_axi_araddr_o_int = {ibus_axi_araddr_o, 2'b0};
+   assign ibus_axi_awaddr_o_int = {ibus_axi_awaddr_o, 2'b0};
+   assign dbus_axi_araddr_o_int = {dbus_axi_araddr_o, 2'b0};
+   assign dbus_axi_awaddr_o_int = {dbus_axi_awaddr_o, 2'b0};
 
 
 

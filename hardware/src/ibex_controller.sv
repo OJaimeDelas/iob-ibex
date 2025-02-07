@@ -15,6 +15,8 @@ module ibex_controller #(
   parameter bit BranchPredictor = 1'b0,
   parameter bit MemECC          = 1'b0
  ) (
+
+  output logic stalling_o,
   input  logic                  clk_i,
   input  logic                  rst_ni,
 
@@ -859,6 +861,7 @@ module ibex_controller #(
   // finish (stall_id_i) or because the writeback stage cannot accept it yet (stall_wb_i). If there
   // is no writeback stage stall_wb_i is a constant 0.
   assign stall = stall_id_i | stall_wb_i;
+  assign stalling_o = stall;
 
   // signal to IF stage that ID stage is ready for next instr
   assign id_in_ready_o = ~stall & ~halt_if & ~retain_id;
