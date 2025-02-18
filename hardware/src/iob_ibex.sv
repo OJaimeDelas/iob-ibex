@@ -134,24 +134,24 @@ module iob_ibex import ibex_pkg::*; #(
  * AXI to Ibex LSU Protocol
  */
 
-   //Turn Order Module
-   //This allows for 2 modules to access the same memory
-   iob_ibex2axi_turn ibex2axi_turn (
+   // //Turn Order Module
+   // //This allows for 2 modules to access the same memory
+   // iob_ibex2axi_turn ibex2axi_turn (
 
-      //Control
-      .clk_i(clk_i),
-      .cke_i(cke_i),
-      .arst_i(arst_i),
+   //    //Control
+   //    .clk_i(clk_i),
+   //    .cke_i(cke_i),
+   //    .arst_i(arst_i),
 
-      .req_1(instr_req_o),
-      .gnt_1(instr_gnt_i),
-      .req_0(data_req_o),
-      .gnt_0(data_gnt_i),
-      //.stalling_i('0), //if ibex stalls, this should too
-      .stalling_i(stalling_wire), //if ibex stalls, this should too
-      .data_allowed(data_allow_wire),
-      .curr_turn(curr_turn) // 2-bit output to represent different turns
-   );
+   //    .req_1(instr_req_o),
+   //    .gnt_1(instr_gnt_i),
+   //    .req_0(data_req_o),
+   //    .gnt_0(data_gnt_i),
+   //    //.stalling_i('0), //if ibex stalls, this should too
+   //    .stalling_i(stalling_wire), //if ibex stalls, this should too
+   //    .data_allowed(data_allow_wire),
+   //    .curr_turn(curr_turn) // 2-bit output to represent different turns
+   // );
 
    // Data Bus
    iob_ibex2axi #(
@@ -163,17 +163,11 @@ module iob_ibex import ibex_pkg::*; #(
       .IBEX_DATA_W     (IBEX_DATA_W),
       .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
    ) data_iob2ibex (
-      .data_allowed(data_allow_wire),
 
       //Control
       .clk_i(clk_i),
       .cke_i(cke_i),
       .arst_i(arst_i),
-       
-      // Multiple Access Control    
-      .DualModules('1), // Are two of these modules accessing the same memory? dbus and ibus, i.e.
-      .converter_id(2'b01),  // 2- instr, 1- data
-      .turn_identifier(curr_turn),
 
       // IBEX Ports
       .ibex_req_i(data_req_o),  // Request - LSU requests access to the memory
@@ -248,17 +242,11 @@ module iob_ibex import ibex_pkg::*; #(
       .IBEX_DATA_W     (IBEX_DATA_W),
       .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
    ) instr_iob2ibex (
-      .data_allowed('0),
 
       //Control
       .clk_i(clk_i),
       .cke_i(cke_i),
       .arst_i(arst_i),
-       
-      // Multiple Access Control    
-      .DualModules('1), // Are two of these modules accessing the same memory? dbus and ibus, i.e.
-      .converter_id(2'b10), // 2- instr, 1- data
-      .turn_identifier(curr_turn),
 
       // IBEX Ports
       .ibex_req_i(instr_req_o),  // Request - LSU requests access to the memory

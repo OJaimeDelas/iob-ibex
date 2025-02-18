@@ -8,17 +8,10 @@ module iob_ibex2axi #(
   parameter IBEX_INTG_DATA_W = 7
 ) (
 
-  input logic data_allowed,
-    
   // Genereral Ports
   input logic clk_i,
   input logic cke_i,
   input logic arst_i, 
-
-  // Multiple Access Control    
-  input logic                            DualModules, // Are two of these modules accessing the same memory? dbus and ibus, i.e.
-  input logic [1:0]                           converter_id,
-  input logic [1:0]                            turn_identifier,
 
   // IBEX Ports
   input logic                            ibex_req_i, // Request - LSU requests access to the memory
@@ -84,248 +77,188 @@ module iob_ibex2axi #(
 );
 
   // Internal signals for stateful logic
-  wire awvalid_internal, wvalid_internal, arvalid_internal, rvalid_internal;
-  wire [AXI_ADDR_W-2 -1:0] awaddr_internal, araddr_internal;
-  wire [AXI_ADDR_W -1:0] awaddr_int, araddr_int, ibex_addr_int;
-  wire [AXI_DATA_W-1:0] wdata_internal, rdata_internal;
-  wire [AXI_DATA_W/8-1:0] wstrb_internal;
-  wire arst_n, awready_handshake, wready_handshake;
-  reg ibex_granted, valid_turn, stall_turn;
+  //AR
+  wire arvalid_wire, arready_wire;
+  wire [AXI_ADDR_W-2 -1:0] araddr_wire;
+  wire [AXI_ADDR_W -1:0] araddr_int;
 
-  //DualModule functioning
-  always_comb begin
-    if ( DualModules == '1) begin
-      if ( converter_id == turn_identifier | data_allowed) begin
-        valid_turn = 1'b1;
-        assign awvalid_o = awvalid_internal;
-        assign wvalid_o  = wvalid_internal;
-        assign arvalid_o = arvalid_internal;
+  //R
+  wire rvalid_wire, rready_wire;
+  wire [AXI_DATA_W-1:0] rdata_wire;
+  wire [1:0] rresp_wire;
 
-        // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
-        ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));   
-      end else if ( 2'b11 == turn_identifier) begin
-        // Some functionality needs to remain in a stall, so that the cpu leaves that state
-        stall_turn = 1'b1;
+  //AW
+  wire awvalid_wire, awready_wire;
+  wire [AXI_ADDR_W-2 -1:0] awaddr_wire;
+  wire [AXI_ADDR_W -1:0] awaddr_int;
 
-        assign awvalid_o = awvalid_internal;
-        assign wvalid_o  = wvalid_internal;
-        assign arvalid_o = arvalid_internal;
+  //W
+  wire wvalid_wire, wready_wire;
+  wire [AXI_DATA_W-1:0] wdata_wire;
+  wire [AXI_DATA_W/8-1:0] wstrb_wire;
 
-        // The granted appears if ibex is requiring one (req + we) and the memory accepted (awready+wready or arready+rvalid)
-        ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));   
+  //B
+  wire bvalid_wire, bready_wire;
+  wire [1:0] bresp_wire;
 
-      end else begin
-        stall_turn = '0;
-        valid_turn = '0;
-        assign awvalid_o = '0;
-        assign wvalid_o  = '0;
-        assign arvalid_o = '0;
-        ibex_granted = '0;
-      end
+  //IBEX
+  wire ibex_req_wire, ibex_we_wire; //inputs
+  wire [AXI_ADDR_W-2 -1:0]  ibex_addr_wire;
+  wire [AXI_ADDR_W -1:0]    ibex_addr_int;
+  wire [IBEX_DATA_W -1:0]   ibex_wdata_wire;
+  wire [IBEX_INTG_DATA_W -1:0]    ibex_wdata_intg_wire;
+  wire ibex_gnt_wire, ibex_rvalid_wire, ibex_err_wire; // outputs
+  wire [IBEX_DATA_W -1:0]   ibex_rdata_wire;
+  wire [IBEX_INTG_DATA_W -1:0]    ibex_rdata_intg_wire;
 
-    end else begin
-      stall_turn = '1;
-      valid_turn = '1;
-      assign awvalid_o = awvalid_internal;
-      assign wvalid_o  = wvalid_internal;
-      assign arvalid_o = arvalid_internal;
-      ibex_granted = ibex_req_i && ((awready_handshake && wready_handshake && ibex_we_i) | (arready_i && rvalid_i && ~ibex_we_i));
-    end
+  // Logic Signals
+  wire arready_handshake, arready_handshake_next;
+  wire rvalid_handshake, rvalid_handshake_next;
+  wire wvalid_handshake, wvalid_handshake_next;
+  wire awready_handshake, awready_handshake_next;
+  wire bvalid_handshake, bvalid_handshake_next;
 
-  end
-
-  assign ibex_gnt_value = ibex_granted ? 1'b1 : 1'b0;
+  wire ibex_rvalid_next;
+  wire [IBEX_DATA_W -1:0] ibex_rdata_next;
+  wire ibex_err_next;
 
   assign arst_n = arst_i;
-
-  // Register Module for AWADDR Handshake
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) awready_handshake_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n | (~ibex_req_i) | ibex_granted), // Reset this value if the operation is completed/dropped
-    .en_i(awready_i & ibex_req_i & ibex_we_i & (valid_turn | stall_turn)),
-    .rst_i('0),
-    .data_i('1),
-    .data_o(awready_handshake)
-  );
-
-  // Register Module for WDATA Handshake
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) wready_handshake_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n | (~ibex_req_i) | ibex_granted), // Reset this value if the operation is completed/dropped
-    .en_i(wready_i & ibex_req_i & ibex_we_i & (valid_turn | stall_turn)),
-    .rst_i('0),
-    .data_i('1),
-    .data_o(wready_handshake)
-  );
-
-  // Register Module for AW Channel
-  iob_reg_re #(
-    .DATA_W(AXI_ADDR_W-2),
-    .RST_VAL(0)
-  ) awaddr_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(ibex_req_i & ibex_we_i & valid_turn),
-    .rst_i('0),
-    .data_i(ibex_addr_i),
-    .data_o(awaddr_internal)
-  );
-
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) awvalid_next_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i((valid_turn | stall_turn)),
-    .rst_i('0),
-    .data_i(awvalid_next),
-    .data_o(awvalid_internal)
-  );
-
-  // Register Module for W Channel
-  iob_reg_re #(
-    .DATA_W(AXI_DATA_W),
-    .RST_VAL(0)
-  ) wdata_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(ibex_req_i & ibex_we_i & valid_turn),
-    .rst_i('0),
-    .data_i(ibex_wdata_i),
-    .data_o(wdata_internal)
-  );
-
-  iob_reg_re #(
-    .DATA_W(AXI_DATA_W/8),
-    .RST_VAL(0)
-  ) wstrb_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(ibex_req_i & ibex_we_i & valid_turn),
-    .rst_i('0),
-    .data_i(ibex_be_i),
-    .data_o(wstrb_internal)
-  );
-
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) wvalid_next_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i((valid_turn | stall_turn)),
-    .rst_i('0),
-    .data_i(wvalid_next),
-    .data_o(wvalid_internal)
-  );
-
-  // Register Module for AR Channel
-  iob_reg_re #(
-    .DATA_W(AXI_ADDR_W-2),
-    .RST_VAL(0)
-  ) araddr_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(ibex_req_i & ~ibex_we_i & valid_turn),
-    .rst_i('0),
-    .data_i(ibex_addr_i),
-    .data_o(araddr_internal)
-  );
-
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) arvalid_next_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(ibex_req_i & ~ibex_we_i & (valid_turn | stall_turn)),
-    .rst_i('0),
-    .data_i(arvalid_next),
-    .data_o(arvalid_internal)
-  );
-
-  // Register Module for R Channel
-  iob_reg_re #(
-    .DATA_W(AXI_DATA_W),
-    .RST_VAL(0)
-  ) rdata_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(rvalid_i),
-    .rst_i('0),
-    .data_i(rdata_i),
-    .data_o(rdata_internal)
-  );
-
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) rvalid_reg_2 (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i(valid_turn),
-    .rst_i('0),
-    .data_i(rvalid_next),
-    .data_o(rvalid_internal)
-  );
   
-  // Assign next values
-  assign rvalid_next  = rvalid_i? 1'b1 : 1'b0;
-  assign arvalid_next = (ibex_req_i & ~ibex_we_i)?  1'b1 : 1'b0;
-  assign wvalid_next  = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
-  assign awvalid_next = (ibex_req_i & ibex_we_i)?  1'b1 : 1'b0;
+  // AxiInputs2Wires
+  assign arready_wire = arready_i;
 
-  // Assign final output signals - Some signals depend on DualModules
-  assign awaddr_o = awaddr_internal;
-  
-  assign wdata_o = wdata_internal;
-  
-  assign araddr_o = araddr_internal;
-  
-  assign rready_o  = 1'b1; // Always ready for read transactions
-  
-  assign ibex_rdata_o = rdata_internal;
-  assign ibex_rvalid_o = rvalid_internal;
+  assign awready_wire = awready_i;
 
-  // Make the full addresses available
-  assign awaddr_int = {awaddr_internal, 2'b0};
-  assign araddr_int = {araddr_internal , 2'b0};
-  assign ibex_addr_int = {ibex_addr_i , 2'b0};
+  assign wready_wire  = wready_i;
 
-  // AXI Error Handling
-  assign ibex_err_o = (bvalid_i && bresp_i != 2'b00) || (rvalid_i && rresp_i != 2'b00);
+  assign rvalid_wire  = rvalid_i;
+  assign rdata_wire   = rdata_i;
+  assign rresp_wire   = rresp_i;
+
+  assign bvalid_wire = bvalid_i;
+
+  // IbexInputs2Wires
+  assign ibex_req_wire = ibex_req_i;
+  assign ibex_we_wire = ibex_we_i;
+
+  assign ibex_addr_wire = ibex_addr_i;
+  assign ibex_addr_int = {ibex_addr_wire,2'b0};
+
+  assign ibex_wdata_wire = ibex_wdata_i;
+  assign ibex_wdata_intg_wire = ibex_wdata_intg_i;
+
+  assign araddr_wire = ibex_addr_wire;
+  assign awaddr_wire = ibex_addr_wire;
+  assign wdata_wire = ibex_wdata_wire;
+
+  // READ Operation  
+  // Ibex wants to read something
+  // In AXI, a read consists in 2 steps: AR and R.
+  // In Ibex, it all happens at once. req_o is set, alongside the read address, and we=0.
+  // So, in terms of the AXI interface, the CPU's signals are all ready/valid
+  // 
+  // We have to consider that once each handshake is done, the intervening signals must be
+  // turned off, or the memory will consider it a new interaction.
+  //
+  // The main thing to take into consideration is that the granted must take into consideration
+  // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
+  assign arvalid_wire = (ibex_req_wire & ~ibex_we_wire);
+
+  assign rready_wire  = 1'b1;
+
+
+  // WRITE Operation  
+  // Ibex wants to write something
+  // In AXI, a write consists in 3 steps: AW, W and then B.
+  // In Ibex, it all happens at once. req_o is set, alongside the write address, write data
+  // and we=1.
+  // So, in terms of the AXI interface, the CPU's signals are all ready/valid
+  // 
+  // The main thing to take into consideration is that the granted must take into consideration
+  // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
+  assign wvalid_wire  = (ibex_req_wire & ibex_we_wire);
+  
+  assign awvalid_wire = (ibex_req_wire & ibex_we_wire);
+  
+  assign bready_wire = (ibex_req_wire & ibex_we_wire & ~bvalid_handshake);
+
+
 
   // Grant Logic
-  iob_reg_re #(
-    .DATA_W(1),
-    .RST_VAL(0)
-  ) gnt_reg (
-    .clk_i(clk_i),
-    .cke_i(cke_i),
-    .arst_i(arst_n),
-    .en_i('1),
-    .rst_i('0),
-    .data_i(ibex_gnt_value),
-    .data_o(ibex_gnt_o)
-  );
+  //assign ibex_gnt_wire = (rvalid_handshake & arready_handshake) | (bvalid_handshake & wvalid_handshake & awready_handshake); // Read | Write
+  
+  assign ibex_gnt_wire = (arready_wire & ~ibex_we_wire) | (wready_wire & ibex_we_wire);
+  // IBEX rvalid, rdata and error handling
+  // After the granted signal is sent, an ibex_rvalid signal should be set the next cycle, and be up for exactly 1 cycle.
+  // Alongside with the ibex_rvalid signal, should go the read data or the ibex_error.
+
+  // This ibex_rvalid signal must return to 0 if no other gnt signal was set, so that ibex_rvalid is only 1 for exactly 1 cycle.
+  // In the case that there are multiple consecutive memory accesses, there will be consecutive gnt signals, and ibex_rvalid can't reset
+
+  assign ibex_rvalid_wire = rvalid_wire | bvalid_wire; // The valid consists of gnt signal, one cycle delayed
+  // iob_reg_re #( // Set ibex_rvalid
+  //   .DATA_W(1),
+  //   .RST_VAL(0)
+  // ) ibex_rvalid_reg (
+  //   .clk_i(clk_i),
+  //   .cke_i(cke_i),
+  //   .arst_i(arst_n),
+  //   .en_i('1),
+  //   .rst_i('0),
+  //   .data_i(ibex_rvalid_next),
+  //   .data_o(ibex_rvalid_wire)
+  // );
+
+  assign ibex_rdata_wire = rdata_wire; // The valid consists of rdata signal, one cycle delayed
+  // iob_reg_re #( // Set ibex_rdata
+  //   .DATA_W(IBEX_DATA_W),
+  //   .RST_VAL(0)
+  // ) ibex_rdata_reg (
+  //   .clk_i(clk_i),
+  //   .cke_i(cke_i),
+  //   .arst_i(arst_n),
+  //   .en_i('1),
+  //   .rst_i('0),
+  //   .data_i(ibex_rdata_next),
+  //   .data_o(ibex_rdata_wire)
+  // );
+
+  //assign ibex_err_wire = rvalid_wire & (rresp_wire != 2'b00) | bvalid_wire & (bresp_wire != 2'b00);
+  assign ibex_err_wire = rvalid_wire & (| rresp_wire) | bvalid_wire & (| bresp_wire) ;
+  // iob_reg_re #( // Set ibex_rdata
+  //   .DATA_W(1),
+  //   .RST_VAL(0)
+  // ) ibex_err_reg (
+  //   .clk_i(clk_i),
+  //   .cke_i(cke_i),
+  //   .arst_i(arst_n),
+  //   .en_i('1),
+  //   .rst_i('0),
+  //   .data_i(ibex_err_next),
+  //   .data_o(ibex_err_wire)
+  // );   
+
+  // Assign final output 
+  assign wstrb_o = ibex_be_i;
+  assign araddr_o = araddr_wire;
+  assign arvalid_o = arvalid_wire;
+
+  assign awaddr_o = awaddr_wire;
+  assign awvalid_o = awvalid_wire;
+
+  assign wdata_o = wdata_wire;
+  assign wvalid_o  = wvalid_wire;
+  
+  assign rready_o  = rready_wire;
+
+  assign bready_o = bready_wire;
+
+  assign ibex_gnt_o = ibex_gnt_wire;
+  assign ibex_rdata_o = ibex_rdata_wire;
+  assign ibex_rdata_intg_o = ibex_rdata_intg_wire;
+  assign ibex_rvalid_o = ibex_rvalid_wire;
+  assign ibex_err_o = ibex_err_wire;
+
 
   // Default assignments for unused AXI signals
   assign awprot_o  = '0;
