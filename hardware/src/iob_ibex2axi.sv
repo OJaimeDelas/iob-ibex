@@ -78,78 +78,48 @@ module iob_ibex2axi #(
 
   // Internal signals for stateful logic
   //AR
-  wire arvalid_wire, arready_wire;
-  wire [AXI_ADDR_W-2 -1:0] araddr_wire;
-  wire [AXI_ADDR_W -1:0] araddr_int;
 
   //R
-  wire rvalid_wire, rready_wire;
-  wire [AXI_DATA_W-1:0] rdata_wire;
-  wire [1:0] rresp_wire;
 
   //AW
-  wire awvalid_wire, awready_wire;
-  wire [AXI_ADDR_W-2 -1:0] awaddr_wire;
-  wire [AXI_ADDR_W -1:0] awaddr_int;
 
   //W
-  wire wvalid_wire, wready_wire;
-  wire [AXI_DATA_W-1:0] wdata_wire;
-  wire [AXI_DATA_W/8-1:0] wstrb_wire;
 
   //B
-  wire bvalid_wire, bready_wire;
-  wire [1:0] bresp_wire;
 
   //IBEX
-  wire ibex_req_wire, ibex_we_wire; //inputs
-  wire [AXI_ADDR_W-2 -1:0]  ibex_addr_wire;
   wire [AXI_ADDR_W -1:0]    ibex_addr_int;
-  wire [IBEX_DATA_W -1:0]   ibex_wdata_wire;
   wire [IBEX_INTG_DATA_W -1:0]    ibex_wdata_intg_wire;
-  wire ibex_gnt_wire, ibex_rvalid_wire, ibex_err_wire; // outputs
-  wire [IBEX_DATA_W -1:0]   ibex_rdata_wire;
   wire [IBEX_INTG_DATA_W -1:0]    ibex_rdata_intg_wire;
 
-  // Logic Signals
-  wire arready_handshake, arready_handshake_next;
-  wire rvalid_handshake, rvalid_handshake_next;
-  wire wvalid_handshake, wvalid_handshake_next;
-  wire awready_handshake, awready_handshake_next;
-  wire bvalid_handshake, bvalid_handshake_next;
-
-  wire ibex_rvalid_next;
-  wire [IBEX_DATA_W -1:0] ibex_rdata_next;
-  wire ibex_err_next;
-
   assign arst_n = arst_i;
+
+  assign ibex_addr_int = {ibex_addr_i,2'b0};
+  assign ibex_wdata_intg_wire = ibex_wdata_intg_i; //not implemented
   
-  // AxiInputs2Wires
-  assign arready_wire = arready_i;
+  
+  // Assign final output 
+  assign ibex_gnt_o = (arready_i & ~ibex_we_i) | (wready_i & ibex_we_i);
 
-  assign awready_wire = awready_i;
+  // WRITE Operation  
+  // Ibex wants to write something
+  // In AXI, a write consists in 3 steps: AW, W and then B.
+  // In Ibex, it all happens at once. req_o is set, alongside the write address, write data
+  // and we=1.
+  // So, in terms of the AXI interface, the CPU's signals are all ready/valid
+  // 
+  // The main thing to take into consideration is that the granted must take into consideration
+  // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
+  assign wstrb_o = ibex_be_i;
 
-  assign wready_wire  = wready_i;
+  assign awaddr_o = ibex_addr_i;
+  assign awvalid_o = (ibex_req_i & ibex_we_i);
 
-  assign rvalid_wire  = rvalid_i;
-  assign rdata_wire   = rdata_i;
-  assign rresp_wire   = rresp_i;
+  assign wdata_o = ibex_wdata_i;
+  assign wvalid_o  = (ibex_req_i & ibex_we_i);
 
-  assign bvalid_wire = bvalid_i;
-
-  // IbexInputs2Wires
-  assign ibex_req_wire = ibex_req_i;
-  assign ibex_we_wire = ibex_we_i;
-
-  assign ibex_addr_wire = ibex_addr_i;
-  assign ibex_addr_int = {ibex_addr_wire,2'b0};
-
-  assign ibex_wdata_wire = ibex_wdata_i;
-  assign ibex_wdata_intg_wire = ibex_wdata_intg_i;
-
-  assign araddr_wire = ibex_addr_wire;
-  assign awaddr_wire = ibex_addr_wire;
-  assign wdata_wire = ibex_wdata_wire;
+  assign bready_o = (ibex_req_i & ibex_we_i);
+  
 
   // READ Operation  
   // Ibex wants to read something
@@ -162,32 +132,11 @@ module iob_ibex2axi #(
   //
   // The main thing to take into consideration is that the granted must take into consideration
   // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
-  assign arvalid_wire = (ibex_req_wire & ~ibex_we_wire);
+  assign arvalid_o = (ibex_req_i & ~ibex_we_i);
 
-  assign rready_wire  = 1'b1;
+  assign araddr_o = ibex_addr_i;
+  assign rready_o  = 1'b1;
 
-
-  // WRITE Operation  
-  // Ibex wants to write something
-  // In AXI, a write consists in 3 steps: AW, W and then B.
-  // In Ibex, it all happens at once. req_o is set, alongside the write address, write data
-  // and we=1.
-  // So, in terms of the AXI interface, the CPU's signals are all ready/valid
-  // 
-  // The main thing to take into consideration is that the granted must take into consideration
-  // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
-  assign wvalid_wire  = (ibex_req_wire & ibex_we_wire);
-  
-  assign awvalid_wire = (ibex_req_wire & ibex_we_wire);
-  
-  assign bready_wire = (ibex_req_wire & ibex_we_wire & ~bvalid_handshake);
-
-
-
-  // Grant Logic
-  //assign ibex_gnt_wire = (rvalid_handshake & arready_handshake) | (bvalid_handshake & wvalid_handshake & awready_handshake); // Read | Write
-  
-  assign ibex_gnt_wire = (arready_wire & ~ibex_we_wire) | (wready_wire & ibex_we_wire);
   // IBEX rvalid, rdata and error handling
   // After the granted signal is sent, an ibex_rvalid signal should be set the next cycle, and be up for exactly 1 cycle.
   // Alongside with the ibex_rvalid signal, should go the read data or the ibex_error.
@@ -195,69 +144,11 @@ module iob_ibex2axi #(
   // This ibex_rvalid signal must return to 0 if no other gnt signal was set, so that ibex_rvalid is only 1 for exactly 1 cycle.
   // In the case that there are multiple consecutive memory accesses, there will be consecutive gnt signals, and ibex_rvalid can't reset
 
-  assign ibex_rvalid_wire = rvalid_wire | bvalid_wire; // The valid consists of gnt signal, one cycle delayed
-  // iob_reg_re #( // Set ibex_rvalid
-  //   .DATA_W(1),
-  //   .RST_VAL(0)
-  // ) ibex_rvalid_reg (
-  //   .clk_i(clk_i),
-  //   .cke_i(cke_i),
-  //   .arst_i(arst_n),
-  //   .en_i('1),
-  //   .rst_i('0),
-  //   .data_i(ibex_rvalid_next),
-  //   .data_o(ibex_rvalid_wire)
-  // );
+  assign ibex_rdata_o = rdata_i;
+  assign ibex_rvalid_o = rvalid_i | bvalid_i;
+  assign ibex_err_o =  rvalid_i & (| rresp_i) | bvalid_i & (| bresp_i);
 
-  assign ibex_rdata_wire = rdata_wire; // The valid consists of rdata signal, one cycle delayed
-  // iob_reg_re #( // Set ibex_rdata
-  //   .DATA_W(IBEX_DATA_W),
-  //   .RST_VAL(0)
-  // ) ibex_rdata_reg (
-  //   .clk_i(clk_i),
-  //   .cke_i(cke_i),
-  //   .arst_i(arst_n),
-  //   .en_i('1),
-  //   .rst_i('0),
-  //   .data_i(ibex_rdata_next),
-  //   .data_o(ibex_rdata_wire)
-  // );
-
-  //assign ibex_err_wire = rvalid_wire & (rresp_wire != 2'b00) | bvalid_wire & (bresp_wire != 2'b00);
-  assign ibex_err_wire = rvalid_wire & (| rresp_wire) | bvalid_wire & (| bresp_wire) ;
-  // iob_reg_re #( // Set ibex_rdata
-  //   .DATA_W(1),
-  //   .RST_VAL(0)
-  // ) ibex_err_reg (
-  //   .clk_i(clk_i),
-  //   .cke_i(cke_i),
-  //   .arst_i(arst_n),
-  //   .en_i('1),
-  //   .rst_i('0),
-  //   .data_i(ibex_err_next),
-  //   .data_o(ibex_err_wire)
-  // );   
-
-  // Assign final output 
-  assign wstrb_o = ibex_be_i;
-  assign araddr_o = araddr_wire;
-  assign arvalid_o = arvalid_wire;
-
-  assign awaddr_o = awaddr_wire;
-  assign awvalid_o = awvalid_wire;
-
-  assign wdata_o = wdata_wire;
-  assign wvalid_o  = wvalid_wire;
-  
-  assign rready_o  = rready_wire;
-
-  assign bready_o = bready_wire;
-
-  assign ibex_gnt_o = ibex_gnt_wire;
-  assign ibex_rdata_o = ibex_rdata_wire;
-  assign ibex_rdata_intg_o = ibex_rdata_intg_wire;
-  assign ibex_rvalid_o = ibex_rvalid_wire;
-  assign ibex_err_o = ibex_err_wire;
+  assign ibex_rdata_intg_o = ibex_rdata_intg_wire; //not implemented
 
 
   // Default assignments for unused AXI signals
