@@ -1,5 +1,4 @@
 `timescale 1ns / 1ps
-`include "iob_bsp.vh"
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
 
@@ -8,9 +7,9 @@ module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ADDR_W       = `IOB_IBEX_AXI_ADDR_W,
    parameter AXI_DATA_W       = `IOB_IBEX_AXI_DATA_W,
    parameter AXI_LEN_W        = `IOB_IBEX_AXI_LEN_W,
-   parameter IBEX_ADDR_W      = AXI_ADDR_W,
-   parameter IBEX_DATA_W      = AXI_DATA_W,
-   parameter IBEX_INTG_DATA_W = 7
+   parameter IBEX_ADDR_W      = `IOB_IBEX_IBEX_ADDR_W,
+   parameter IBEX_DATA_W      = `IOB_IBEX_IBEX_DATA_W,
+   parameter IBEX_INTG_DATA_W = `IOB_IBEX_IBEX_INTG_DATA_W
 ) (
    // clk_en_rst_s
    input                       clk_i,
@@ -93,8 +92,28 @@ module iob_ibex import ibex_pkg::*; #(
    output [             4-1:0] dbus_axi_awcache_o,
    output [             4-1:0] dbus_axi_awqos_o,
    output                      dbus_axi_wlast_o,
-   input  [      AXI_ID_W-1:0] dbus_axi_bid_i
+   input  [      AXI_ID_W-1:0] dbus_axi_bid_i,
+   // clint_cbus_s
+   input                       clint_iob_valid_i,
+   input  [            14-1:0] clint_iob_addr_i,
+   input  [            32-1:0] clint_iob_wdata_i,
+   input  [             4-1:0] clint_iob_wstrb_i,
+   output                      clint_iob_rvalid_o,
+   output [            32-1:0] clint_iob_rdata_o,
+   output                      clint_iob_ready_o,
+   // plic_cbus_s
+   input                       plic_iob_valid_i,
+   input  [            20-1:0] plic_iob_addr_i,
+   input  [            32-1:0] plic_iob_wdata_i,
+   input  [             4-1:0] plic_iob_wstrb_i,
+   output                      plic_iob_rvalid_o,
+   output [            32-1:0] plic_iob_rdata_o,
+   output                      plic_iob_ready_o,
+   // plic_interrupts_i
+   input  [            32-1:0] plic_interrupts_i
 );
+
+
    // cpu_reset
    wire                        cpu_reset_neg;
    wire                        cpu_reset;
@@ -126,32 +145,7 @@ module iob_ibex import ibex_pkg::*; #(
    wire [AXI_ADDR_W -1:0] ibus_axi_awaddr_o_int;
    wire [AXI_ADDR_W -1:0] dbus_axi_araddr_o_int;
    wire [AXI_ADDR_W -1:0] dbus_axi_awaddr_o_int;
-   wire [1:0] curr_turn;
-   wire stalling_wire, data_allow_wire;
 
-
-   /*
- * AXI to Ibex LSU Protocol
- */
-
-   // //Turn Order Module
-   // //This allows for 2 modules to access the same memory
-   // iob_ibex2axi_turn ibex2axi_turn (
-
-   //    //Control
-   //    .clk_i(clk_i),
-   //    .cke_i(cke_i),
-   //    .arst_i(arst_i),
-
-   //    .req_1(instr_req_o),
-   //    .gnt_1(instr_gnt_i),
-   //    .req_0(data_req_o),
-   //    .gnt_0(data_gnt_i),
-   //    //.stalling_i('0), //if ibex stalls, this should too
-   //    .stalling_i(stalling_wire), //if ibex stalls, this should too
-   //    .data_allowed(data_allow_wire),
-   //    .curr_turn(curr_turn) // 2-bit output to represent different turns
-   // );
 
    // Data Bus
    iob_ibex2axi #(
@@ -165,8 +159,8 @@ module iob_ibex import ibex_pkg::*; #(
    ) data_iob2ibex (
 
       //Control
-      .clk_i(clk_i),
-      .cke_i(cke_i),
+      .clk_i (clk_i),
+      .cke_i (cke_i),
       .arst_i(arst_i),
 
       // IBEX Ports
@@ -244,8 +238,8 @@ module iob_ibex import ibex_pkg::*; #(
    ) instr_iob2ibex (
 
       //Control
-      .clk_i(clk_i),
-      .cke_i(cke_i),
+      .clk_i (clk_i),
+      .cke_i (cke_i),
       .arst_i(arst_i),
 
       // IBEX Ports
@@ -265,7 +259,7 @@ module iob_ibex import ibex_pkg::*; #(
       // AXI Ports
       // AW Channel
       .awready_i('0),
-      .awvalid_o(),     //It's an output because CPU sends the Addr
+      .awvalid_o(),    //It's an output because CPU sends the Addr
       .awaddr_o (),
       .awprot_o (),
       .awid_o   (),
@@ -278,7 +272,7 @@ module iob_ibex import ibex_pkg::*; #(
 
       // W Channel
       .wready_i('0),
-      .wvalid_o(),     //It's an output because CPU sends the Data
+      .wvalid_o(),    //It's an output because CPU sends the Data
       .wdata_o (),
       .wstrb_o (),
       .wlast_o (),
@@ -287,7 +281,7 @@ module iob_ibex import ibex_pkg::*; #(
       .bvalid_i('0),
       .bresp_i ('0),
       .bid_i   ('0),
-      .bready_o(),     //It's an input because Memory answers
+      .bready_o(),    //It's an input because Memory answers
 
       // AR Channel
       .arready_i(ibus_axi_arready_i),
@@ -316,24 +310,24 @@ module iob_ibex import ibex_pkg::*; #(
  * Some parameters' definitions
  */
 
-   parameter bit                 RV32E                    = 1'b0;
-   parameter ibex_pkg::rv32m_e   RV32M                    = ibex_pkg::RV32MSingleCycle;
-   parameter ibex_pkg::rv32b_e   RV32B                    = ibex_pkg::RV32BOTEarlGrey;
-   parameter ibex_pkg::regfile_e RegFile                  = ibex_pkg::RegFileFF;
-   parameter bit                 BranchTargetALU          = 1'b1;
-   parameter bit                 WritebackStage           = 1'b1;
-   parameter bit                 ICache                   = 1'b0;
-   parameter bit                 ICacheECC                = 1'b0;
-   parameter bit                 ICacheScramble           = 1'b0;
-   parameter bit                 BranchPredictor          = 1'b0;
-   parameter bit                 DbgTriggerEn             = 1'b1;
-   parameter bit                 SecureIbex               = 1'b1;
-   parameter bit                 PMPEnable                = 1'b1;
-   parameter int unsigned        PMPGranularity           = 0;
-   parameter int unsigned        PMPNumRegions            = 16;
-   parameter int unsigned        MHPMCounterNum           = 10;
-   parameter int unsigned        MHPMCounterWidth         = 32;
-   parameter                     SRAMInitFile             = "";
+   parameter bit RV32E = 1'b0;
+   parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MSingleCycle;
+   parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BOTEarlGrey;
+   parameter ibex_pkg::regfile_e RegFile = ibex_pkg::RegFileFF;
+   parameter bit BranchTargetALU = 1'b1;
+   parameter bit WritebackStage = 1'b1;
+   parameter bit ICache = 1'b0;
+   parameter bit ICacheECC = 1'b0;
+   parameter bit ICacheScramble = 1'b0;
+   parameter bit BranchPredictor = 1'b0;
+   parameter bit DbgTriggerEn = 1'b1;
+   parameter bit SecureIbex = 1'b1;
+   parameter bit PMPEnable = 1'b1;
+   parameter int unsigned PMPGranularity = 0;
+   parameter int unsigned PMPNumRegions = 16;
+   parameter int unsigned MHPMCounterNum = 10;
+   parameter int unsigned MHPMCounterWidth = 32;
+   parameter SRAMInitFile = "";
 
    /**
  * Top level module of the ibex RISC-V core
@@ -360,16 +354,15 @@ module iob_ibex import ibex_pkg::*; #(
       .DmExceptionAddr ('0)
    ) u_top (
       .stalling_o(stalling_wire),
-      .clk_i (clk_i),
-      .rst_ni(cpu_reset_neg),
+      .clk_i     (clk_i),
+      .rst_ni    (cpu_reset_neg),
 
       .test_en_i  ('0),
       .scan_rst_ni('1),
       .ram_cfg_i  ('0),
 
       .hart_id_i  ('0),
-      // First instruction executed is at 0x7FFFFF80 + 0x80 = 0x80000000
-      .boot_addr_i(32'h80000000),
+      .boot_addr_i(reset_addr),
 
       // Instruction memory interface
       .instr_req_o       (instr_req_o),
@@ -415,27 +408,27 @@ module iob_ibex import ibex_pkg::*; #(
       .core_sleep_o          ()
    );
 
-   assign instr_addr_o = instr_addr_int[31:2];
-   assign data_addr_o = data_addr_int[31:2];
+   assign instr_addr_o          = instr_addr_int[31:2];
+   assign data_addr_o           = data_addr_int[31:2];
 
-   assign cpu_reset         = (rst_i) | (arst_i);
-   assign cpu_reset_neg          = !(cpu_reset);
+   assign cpu_reset             = (rst_i) | (arst_i);
+   assign cpu_reset_neg         = !(cpu_reset);
 
-   assign ibus_axi_awvalid_o = 1'b0;
-   assign ibus_axi_awaddr_o  = {AXI_ADDR_W - 2{1'b0}};
-   assign ibus_axi_awid_o    = 1'b0;
-   assign ibus_axi_awlen_o   = {AXI_LEN_W{1'b0}};
-   assign ibus_axi_awsize_o  = {3{1'b0}};
-   assign ibus_axi_awburst_o = {2{1'b0}};
-   assign ibus_axi_awlock_o  = 1'b0;
-   assign ibus_axi_awcache_o = {4{1'b0}};
-   assign ibus_axi_awqos_o   = {4{1'b0}};
-   assign ibus_axi_awprot_o  = {3{1'b0}};
-   assign ibus_axi_wvalid_o  = 1'b0;
-   assign ibus_axi_wdata_o   = {AXI_DATA_W{1'b0}};
-   assign ibus_axi_wstrb_o   = {AXI_DATA_W / 8{1'b0}};
-   assign ibus_axi_wlast_o   = 1'b0;
-   assign ibus_axi_bready_o  = 1'b0;
+   assign ibus_axi_awvalid_o    = 1'b0;
+   assign ibus_axi_awaddr_o     = {AXI_ADDR_W - 2{1'b0}};
+   assign ibus_axi_awid_o       = 1'b0;
+   assign ibus_axi_awlen_o      = {AXI_LEN_W{1'b0}};
+   assign ibus_axi_awsize_o     = {3{1'b0}};
+   assign ibus_axi_awburst_o    = {2{1'b0}};
+   assign ibus_axi_awlock_o     = 1'b0;
+   assign ibus_axi_awcache_o    = {4{1'b0}};
+   assign ibus_axi_awqos_o      = {4{1'b0}};
+   assign ibus_axi_awprot_o     = {3{1'b0}};
+   assign ibus_axi_wvalid_o     = 1'b0;
+   assign ibus_axi_wdata_o      = {AXI_DATA_W{1'b0}};
+   assign ibus_axi_wstrb_o      = {AXI_DATA_W / 8{1'b0}};
+   assign ibus_axi_wlast_o      = 1'b0;
+   assign ibus_axi_bready_o     = 1'b0;
 
    //Integrer addresses
    assign ibus_axi_araddr_o_int = {ibus_axi_araddr_o, 2'b0};

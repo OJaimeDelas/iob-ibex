@@ -13,7 +13,7 @@ def setup(py_params_dict):
 
     attributes_dict = {
         "version": "0.1",
-        "generate_hw": True,
+        "generate_hw": False,
         "confs": [
             {
                 "name": "AXI_ID_W",
