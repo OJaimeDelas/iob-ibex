@@ -2,11 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-
 def setup(py_params_dict):
 
     params = {
-        "reset_addr": 0x00000000,
+        "reset_addr": 0x40000000,
         "uncached_start_addr": 0x00000000,
         "uncached_size": 2**32,
     }
@@ -395,7 +394,6 @@ def setup(py_params_dict):
       .DmHaltAddr      ('0),
       .DmExceptionAddr ('0)
    ) u_top (
-      .stalling_o(stalling_wire),
       .clk_i (clk_i),
       .rst_ni(cpu_reset_neg),
 

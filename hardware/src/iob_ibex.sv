@@ -7,9 +7,9 @@ module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ADDR_W       = `IOB_IBEX_AXI_ADDR_W,
    parameter AXI_DATA_W       = `IOB_IBEX_AXI_DATA_W,
    parameter AXI_LEN_W        = `IOB_IBEX_AXI_LEN_W,
-   parameter IBEX_ADDR_W      = `IOB_IBEX_IBEX_ADDR_W,
-   parameter IBEX_DATA_W      = `IOB_IBEX_IBEX_DATA_W,
-   parameter IBEX_INTG_DATA_W = `IOB_IBEX_IBEX_INTG_DATA_W
+   parameter IBEX_ADDR_W      = AXI_ADDR_W,
+   parameter IBEX_DATA_W      = AXI_DATA_W,
+   parameter IBEX_INTG_DATA_W = 7
 ) (
    // clk_en_rst_s
    input                       clk_i,
@@ -353,7 +353,6 @@ module iob_ibex import ibex_pkg::*; #(
       .DmHaltAddr      ('0),
       .DmExceptionAddr ('0)
    ) u_top (
-      .stalling_o(stalling_wire),
       .clk_i     (clk_i),
       .rst_ni    (cpu_reset_neg),
 
@@ -362,7 +361,7 @@ module iob_ibex import ibex_pkg::*; #(
       .ram_cfg_i  ('0),
 
       .hart_id_i  ('0),
-      .boot_addr_i(reset_addr),
+      .boot_addr_i(32'h40000000),
 
       // Instruction memory interface
       .instr_req_o       (instr_req_o),

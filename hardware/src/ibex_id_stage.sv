@@ -27,8 +27,6 @@ module ibex_id_stage #(
   parameter bit               BranchPredictor = 0,
   parameter bit               MemECC          = 1'b0
 ) (
-
-  output logic stalling_o,
   input  logic                      clk_i,
   input  logic                      rst_ni,
 
@@ -558,15 +556,12 @@ module ibex_id_stage #(
 
   assign mem_resp_intg_err = lsu_load_resp_intg_err_i | lsu_store_resp_intg_err_i;
 
-  wire stalling_wire;
-  assign stalling_o = stalling_wire; 
 
   ibex_controller #(
     .WritebackStage (WritebackStage),
     .BranchPredictor(BranchPredictor),
     .MemECC(MemECC)
   ) controller_i (
-    .stalling_o(stalling_wire),
     .clk_i (clk_i),
     .rst_ni(rst_ni),
 

@@ -44,8 +44,6 @@ module ibex_top import ibex_pkg::*; #(
   parameter logic [SCRAMBLE_NONCE_W-1:0] RndCnstIbexNonce        = RndCnstIbexNonceDefault
 ) (
 
-  output logic stalling_o,
-
   // Clock and Reset
   input  logic                         clk_i,
   input  logic                         rst_ni,
@@ -285,9 +283,6 @@ module ibex_top import ibex_pkg::*; #(
     assign unused_intg = ^{instr_rdata_intg_i, data_rdata_intg_i};
   end
 
-  wire stalling_wire;
-  assign stalling_o = stalling_wire; 
-
   ibex_core #(
     .PMPEnable        (PMPEnable),
     .PMPGranularity   (PMPGranularity),
@@ -322,7 +317,6 @@ module ibex_top import ibex_pkg::*; #(
     .DmHaltAddr       (DmHaltAddr),
     .DmExceptionAddr  (DmExceptionAddr)
   ) u_ibex_core (
-    .stalling_o(stalling_wire),
     .clk_i(clk),
     .rst_ni,
 
