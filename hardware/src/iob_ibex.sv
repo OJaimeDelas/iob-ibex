@@ -146,86 +146,6 @@ module iob_ibex import ibex_pkg::*; #(
    wire [AXI_ADDR_W -1:0] dbus_axi_araddr_o_int;
    wire [AXI_ADDR_W -1:0] dbus_axi_awaddr_o_int;
 
-
-   // Data Bus
-   iob_ibex2axi #(
-      .AXI_ID_W        (AXI_ID_W),
-      .AXI_ADDR_W      (AXI_ADDR_W),
-      .AXI_DATA_W      (AXI_DATA_W),
-      .AXI_LEN_W       (AXI_LEN_W),
-      .IBEX_ADDR_W     (IBEX_ADDR_W),
-      .IBEX_DATA_W     (IBEX_DATA_W),
-      .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
-   ) data_iob2ibex (
-
-      //Control
-      .clk_i (clk_i),
-      .cke_i (cke_i),
-      .arst_i(arst_i),
-
-      // IBEX Ports
-      .ibex_req_i(data_req_o),  // Request - LSU requests access to the memory
-      .ibex_we_i(data_we_o),  // Write enable: 1 = write, 0 = read
-      .ibex_be_i(data_be_o),  // Byte enable - Refers which bytes to access. Allows half-word, etc
-      .ibex_addr_i(data_addr_o),  // Address from the LSU
-      .ibex_wdata_i(data_wdata_o),  // Write data
-      .ibex_wdata_intg_i(data_wdata_intg_o),  // Extra parity/integrity bits
-
-      .ibex_gnt_o       (data_gnt_i),         // Access Granted signal from memory
-      .ibex_rvalid_o    (data_rvalid_i),      // Read data valid - There's data in rdata and/or err
-      .ibex_rdata_o     (data_rdata_i),       // Read data output
-      .ibex_rdata_intg_o(data_rdata_intg_i),  // Integrity-protected read data
-      .ibex_err_o       (data_err_i),         // Error signal for LSU
-
-      // AXI Ports
-      // AW Channel
-      .awready_i(dbus_axi_awready_i),
-      .awvalid_o(dbus_axi_awvalid_o),  //It's an output because CPU sends the Addr
-      .awaddr_o (dbus_axi_awaddr_o),
-      .awprot_o (dbus_axi_awprot_o),
-      .awid_o   (dbus_axi_awid_o),
-      .awlen_o  (dbus_axi_awlen_o),
-      .awsize_o (dbus_axi_awsize_o),
-      .awburst_o(dbus_axi_awburst_o),
-      .awlock_o (dbus_axi_awlock_o),
-      .awcache_o(dbus_axi_awcache_o),
-      .awqos_o  (dbus_axi_awqos_o),
-
-      // W Channel
-      .wready_i(dbus_axi_wready_i),
-      .wvalid_o(dbus_axi_wvalid_o),  //It's an output because CPU sends the Data
-      .wdata_o (dbus_axi_wdata_o),
-      .wstrb_o (dbus_axi_wstrb_o),
-      .wlast_o (dbus_axi_wlast_o),
-
-      // B Channel
-      .bvalid_i(dbus_axi_bvalid_i),
-      .bresp_i (dbus_axi_bresp_i),
-      .bid_i   (dbus_axi_bid_i),
-      .bready_o(dbus_axi_bready_o),  //It's an input because Memory answers
-
-      // AR Channel
-      .arready_i(dbus_axi_arready_i),
-      .arvalid_o(dbus_axi_arvalid_o),  //It's an output because CPU sends the Addr
-      .araddr_o (dbus_axi_araddr_o),
-      .arprot_o (dbus_axi_arprot_o),
-      .arid_o   (dbus_axi_arid_o),
-      .arlen_o  (dbus_axi_arlen_o),
-      .arsize_o (dbus_axi_arsize_o),
-      .arburst_o(dbus_axi_arburst_o),
-      .arlock_o (dbus_axi_arlock_o),
-      .arcache_o(dbus_axi_arcache_o),
-      .arqos_o  (dbus_axi_arqos_o),
-
-      // R Channel
-      .rvalid_i(dbus_axi_rvalid_i),  //It's an input because Memory sends the Data
-      .rdata_i (dbus_axi_rdata_i),
-      .rresp_i (dbus_axi_rresp_i),
-      .rid_i   (dbus_axi_rid_i),
-      .rlast_i (dbus_axi_rlast_i),
-      .rready_o(dbus_axi_rready_o)
-   );
-
    // Instruction Bus
    iob_ibex2axi #(
       .AXI_ID_W        (AXI_ID_W),
@@ -235,74 +155,108 @@ module iob_ibex import ibex_pkg::*; #(
       .IBEX_ADDR_W     (IBEX_ADDR_W),
       .IBEX_DATA_W     (IBEX_DATA_W),
       .IBEX_INTG_DATA_W(IBEX_INTG_DATA_W)
-   ) instr_iob2ibex (
+   ) iob2ibex (
 
       //Control
       .clk_i (clk_i),
       .cke_i (cke_i),
       .arst_i(arst_i),
 
-      // IBEX Ports
-      .ibex_req_i(instr_req_o),  // Request - LSU requests access to the memory
-      .ibex_we_i('0),  // Write enable: 1 = write, 0 = read
-      .ibex_be_i('0),  // Byte enable - Refers which bytes to access. Allows half-word, etc
-      .ibex_addr_i(instr_addr_o),  // Address from the LSU
-      .ibex_wdata_i('0),  // Write data
-      .ibex_wdata_intg_i('0),  // Extra parity/integrity bits
 
-      .ibex_gnt_o       (instr_gnt_i),         // Access Granted signal from memory
-      .ibex_rvalid_o    (instr_rvalid_i),      // Read data valid - There's data in rdata and/or err
-      .ibex_rdata_o     (instr_rdata_i),       // Read data output
-      .ibex_rdata_intg_o(instr_rdata_intg_i),  // Integrity-protected read data
-      .ibex_err_o       (instr_err_i),         // Error signal for LSU
+      // IBEX Data Ports
+      .ibex_data_req_i(data_req_o),  // Request - LSU requests access to the memory
+      .ibex_data_we_i(data_we_o),  // Write enable: 1 = write, 0 = read
+      .ibex_data_be_i(data_be_o),  // Byte enable - Refers which bytes to access. Allows half-word, etc
+      .ibex_data_addr_i(data_addr_o),  // Address from the LSU
+      .ibex_data_wdata_i(data_wdata_o),  // Write data
+      .ibex_data_wdata_intg_i(data_wdata_intg_o),  // Extra parity/integrity bits
 
-      // AXI Ports
+      .ibex_data_gnt_o       (data_gnt_i),         // Access Granted signal from memory
+      .ibex_data_rvalid_o    (data_rvalid_i),      // Read data valid - There's data in rdata and/or err
+      .ibex_data_rdata_o     (data_rdata_i),       // Read data output
+      .ibex_data_rdata_intg_o(data_rdata_intg_i),  // Integrity-protected read data
+      .ibex_data_err_o       (data_err_i),         // Error signal for LSU
+
+      // IBEX Instruction Ports
+      .ibex_instr_req_i(instr_req_o),  // Request - LSU requests access to the memory
+      .ibex_instr_addr_i(instr_addr_o),  // Address from the LSU
+
+      .ibex_instr_gnt_o       (instr_gnt_i),         // Access Granted signal from memory
+      .ibex_instr_rvalid_o    (instr_rvalid_i),      // Read data valid - There's data in rdata and/or err
+      .ibex_instr_rdata_o     (instr_rdata_i),       // Read data output
+      .ibex_instr_rdata_intg_o(instr_rdata_intg_i),  // Integrity-protected read data
+      .ibex_instr_err_o       (instr_err_i),         // Error signal for LSU
+
+
+      // AXI Data Ports
       // AW Channel
-      .awready_i('0),
-      .awvalid_o(),    //It's an output because CPU sends the Addr
-      .awaddr_o (),
-      .awprot_o (),
-      .awid_o   (),
-      .awlen_o  (),
-      .awsize_o (),
-      .awburst_o(),
-      .awlock_o (),
-      .awcache_o(),
-      .awqos_o  (),
+      .dbus_awready_i(dbus_axi_awready_i),
+      .dbus_awvalid_o(dbus_axi_awvalid_o),  //It's an output because CPU sends the Addr
+      .dbus_awaddr_o (dbus_axi_awaddr_o),
+      .dbus_awprot_o (dbus_axi_awprot_o),
+      .dbus_awid_o   (dbus_axi_awid_o),
+      .dbus_awlen_o  (dbus_axi_awlen_o),
+      .dbus_awsize_o (dbus_axi_awsize_o),
+      .dbus_awburst_o(dbus_axi_awburst_o),
+      .dbus_awlock_o (dbus_axi_awlock_o),
+      .dbus_awcache_o(dbus_axi_awcache_o),
+      .dbus_awqos_o  (dbus_axi_awqos_o),
 
       // W Channel
-      .wready_i('0),
-      .wvalid_o(),    //It's an output because CPU sends the Data
-      .wdata_o (),
-      .wstrb_o (),
-      .wlast_o (),
+      .dbus_wready_i(dbus_axi_wready_i),
+      .dbus_wvalid_o(dbus_axi_wvalid_o),  //It's an output because CPU sends the Data
+      .dbus_wdata_o (dbus_axi_wdata_o),
+      .dbus_wstrb_o (dbus_axi_wstrb_o),
+      .dbus_wlast_o (dbus_axi_wlast_o),
 
       // B Channel
-      .bvalid_i('0),
-      .bresp_i ('0),
-      .bid_i   ('0),
-      .bready_o(),    //It's an input because Memory answers
+      .dbus_bvalid_i(dbus_axi_bvalid_i),
+      .dbus_bresp_i (dbus_axi_bresp_i),
+      .dbus_bid_i   (dbus_axi_bid_i),
+      .dbus_bready_o(dbus_axi_bready_o),  //It's an input because Memory answers
 
       // AR Channel
-      .arready_i(ibus_axi_arready_i),
-      .arvalid_o(ibus_axi_arvalid_o),  //It's an output because CPU sends the Addr
-      .araddr_o (ibus_axi_araddr_o),
-      .arprot_o (ibus_axi_arprot_o),
-      .arid_o   (ibus_axi_arid_o),
-      .arlen_o  (ibus_axi_arlen_o),
-      .arsize_o (ibus_axi_arsize_o),
-      .arburst_o(ibus_axi_arburst_o),
-      .arlock_o (ibus_axi_arlock_o),
-      .arcache_o(ibus_axi_arcache_o),
-      .arqos_o  (ibus_axi_arqos_o),
+      .dbus_arready_i(dbus_axi_arready_i),
+      .dbus_arvalid_o(dbus_axi_arvalid_o),  //It's an output because CPU sends the Addr
+      .dbus_araddr_o (dbus_axi_araddr_o),
+      .dbus_arprot_o (dbus_axi_arprot_o),
+      .dbus_arid_o   (dbus_axi_arid_o),
+      .dbus_arlen_o  (dbus_axi_arlen_o),
+      .dbus_arsize_o (dbus_axi_arsize_o),
+      .dbus_arburst_o(dbus_axi_arburst_o),
+      .dbus_arlock_o (dbus_axi_arlock_o),
+      .dbus_arcache_o(dbus_axi_arcache_o),
+      .dbus_arqos_o  (dbus_axi_arqos_o),
 
       // R Channel
-      .rvalid_i(ibus_axi_rvalid_i),  //It's an input because Memory sends the Data
-      .rdata_i (ibus_axi_rdata_i),
-      .rresp_i (ibus_axi_rresp_i),
-      .rid_i   (ibus_axi_rid_i),
-      .rlast_i (ibus_axi_rlast_i),
-      .rready_o(ibus_axi_rready_o)
+      .dbus_rvalid_i(dbus_axi_rvalid_i),  //It's an input because Memory sends the Data
+      .dbus_rdata_i (dbus_axi_rdata_i),
+      .dbus_rresp_i (dbus_axi_rresp_i),
+      .dbus_rid_i   (dbus_axi_rid_i),
+      .dbus_rlast_i (dbus_axi_rlast_i),
+      .dbus_rready_o(dbus_axi_rready_o),
+
+      // AXI Instruction Ports
+      // AR Channel
+      .ibus_arready_i(ibus_axi_arready_i),
+      .ibus_arvalid_o(ibus_axi_arvalid_o),  //It's an output because CPU sends the Addr
+      .ibus_araddr_o (ibus_axi_araddr_o),
+      .ibus_arprot_o (ibus_axi_arprot_o),
+      .ibus_arid_o   (ibus_axi_arid_o),
+      .ibus_arlen_o  (ibus_axi_arlen_o),
+      .ibus_arsize_o (ibus_axi_arsize_o),
+      .ibus_arburst_o(ibus_axi_arburst_o),
+      .ibus_arlock_o (ibus_axi_arlock_o),
+      .ibus_arcache_o(ibus_axi_arcache_o),
+      .ibus_arqos_o  (ibus_axi_arqos_o),
+
+      // R Channel
+      .ibus_rvalid_i(ibus_axi_rvalid_i),  //It's an input because Memory sends the Data
+      .ibus_rdata_i (ibus_axi_rdata_i),
+      .ibus_rresp_i (ibus_axi_rresp_i),
+      .ibus_rid_i   (ibus_axi_rid_i),
+      .ibus_rlast_i (ibus_axi_rlast_i),
+      .ibus_rready_o(ibus_axi_rready_o)
    );
 
 
