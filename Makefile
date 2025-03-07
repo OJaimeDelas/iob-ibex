@@ -3,66 +3,34 @@
 # SPDX-License-Identifier: MIT
 
 # (c) 2022-Present IObundle, Lda, all rights reserved
-# 
 
-# Default lib module to setup. Can be overriden by the user.
-CORE ?=iob_ibex
+SETUP_DIR ?= ./build/ibex_out
+IBEX_CONFIG ?= opentitan
+COPY_DIR ?= ../../../iob_soc_V0.8/hardware/src
+WITH_SOC ?= 1  # Flag to indicate if this Makefile is run from the top-level Makefile
 
+# Add files that are not suposed to be copied to the Build Directory
+UNWANTED_FILES ?= ibex_top.sv
 
-all: sim-test
+# Files in this folder will also not be copied
+HDW_SRC_DIR ?= ./hardware/src
 
-setup:
-	nix-shell --run "py2hwsw $(CORE) setup --build_dir '$(BUILD_DIR)' --no_verilog_lint --py_params 'init_mem=$(INIT_MEM):use_extmem=$(USE_EXTMEM)'"
+# Use fusesoc to generate all ibex prim and RTL files
+generate-ibex:
+	nix-shell --run "cd submodules/ibex && fusesoc --cores-root . run --target=lint --setup --build-root $(SETUP_DIR) lowrisc:ibex:ibex_top $(util/ibex_config.py $(IBEX_CONFIG) fusesoc_opts)"
 
-sim-build:
-	nix-shell --run "scripts/test.sh build $(CORE)"
+# Copy extracted files to the Build Directory
+# The copied files must not be UNWANTED, or be in iob-ibex/hardware/src
+copy-ibex:
+	@find submodules/ibex/$(SETUP_DIR) -type f \( -name "*.v" -o -name "*.sv" -o -name "*.vh" \) | while read file; do \
+		basefile=$$(basename $$file); \
+		if [ "$(WITH_SOC)" = "1" ] && [ -f "$(HDW_SRC_DIR)/$$basefile" ]; then \
+		elif [ -n "$(UNWANTED_FILES)" ] && echo "$(UNWANTED_FILES)" | grep -q -w "$$basefile"; then \
+			cp -v $$file $(COPY_DIR); \
+		fi; \
+	done
 
-sim-run:
-	nix-shell --run "VCD=$(VCD) scripts/test.sh $(CORE)"
+clean-ibex:
+	@rm -rf submodules/ibex/$(SETUP_DIR)/*
 
-sim-test:
-	nix-shell --run "scripts/test.sh test"
-
-sim-clean:
-	nix-shell --run "scripts/test.sh clean"
-
-print-attr:
-	nix-shell --run "VCD=$(VCD) SETUP_ARGS='print_attr' scripts/test.sh $(CORE)"
-
-fpga-build:
-	nix-shell --run "make clean setup CORE=$(CORE) INIT_MEM=$(INIT_MEM) USE_EXTMEM=$(USE_EXTMEM) && make -C $(BUILD_DIR) fpga-fw-build BOARD=$(BOARD)"
-	make -C $(BUILD_DIR)/ fpga-build BOARD=$(BOARD)
-
-
-.PHONY: all setup sim-build sim-run sim-test sim-clean print-attr fpga-build fpga-clean
-
-
-# Install board server and client
-board_server_install:
-	sudo cp scripts/board_client.py /usr/local/bin/ && \
-	sudo cp scripts/board_server.py /usr/local/bin/ && \
-        sudo cp scripts/board_server.service /etc/systemd/system/ && \
-        sudo systemctl daemon-reload && \
-	sudo systemctl enable board_server && \
-	sudo systemctl restart board_server
-
-board_server_uninstall:
-	sudo systemctl stop board_server && \
-        sudo systemctl disable board_server && \
-        sudo rm /usr/local/bin/board_client.py && \
-        sudo rm /usr/local/bin/board_server.py && \
-        sudo rm /etc/systemd/system/board_server.service && \
-        sudo systemctl daemon-reload
-
-board_server_status:
-	sudo systemctl status board_server
-
-.PHONY: board_server_install board_server_uninstall board_server_status
-
-
-clean:
-	nix-shell --run "py2hwsw $(CORE) clean --build_dir '$(BUILD_DIR)'"
-	@rm -rf ../*.summary ../*.rpt 
-	@find . -name \*~ -delete
-
-.PHONY: clean
+.PHONY: generate-ibex copy-ibex clean-ibex
