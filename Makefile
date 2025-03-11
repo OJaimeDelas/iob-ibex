@@ -17,7 +17,8 @@ HDW_SRC_DIR ?= hardware/src
 
 # Use fusesoc to generate all ibex prim and RTL files
 # cd submodules/ibex && fusesoc --cores-root . run --target=lint --setup --build-root $(SETUP_DIR) lowrisc:ibex:ibex_top
-
+generate-ibex:
+	nix --extra-experimental-features nix-command --no-warn-dirty --extra-experimental-features flakes develop --command bash -c "cd submodules/ibex && fusesoc --cores-root . run --target=lint --setup --build-root $(SETUP_DIR) lowrisc:ibex:ibex_top"
 
 # Copy extracted files to the Build Directory
 # The copied files must not be UNWANTED, or be in iob-ibex/hardware/src
