@@ -5,7 +5,6 @@
 # (c) 2022-Present IObundle, Lda, all rights reserved
 
 SETUP_DIR ?= build/ibex_out
-IBEX_CONFIG ?= opentitan
 COPY_DIR ?= hardware/copy
 WITH_SOC ?= 1  # Flag to indicate if this Makefile is run from the top-level iob-soc-ibex Makefile
 
