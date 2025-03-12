@@ -6,8 +6,9 @@ IOb-Ibex serves as a wrapper for the [Ibex](https://github.com/lowRISC/ibex) cor
 
 IOb-Ibex cannot be used to run the cpu. It's only purpose is to gather the files needed and to copy them to the build directory.
 In order to actually run this cpu, [IOb-SoC-Ibex](https://github.com/IObundle/iob-soc-ibex) should be used - see it's README for instructions.
+This repository serves other purposes.
 
-This repository serves other purposes. First of all, all modified and developed rtl files for Ibex are here, in 'hardware/src'. If new files were to be created/modified, they should be added there. For example, in order to integrate Ibex with an AXI interface, 'iob_ibex2axi.sv' was developed.
+First of all, all modified and developed RTL files for Ibex are here, in `hardware/src`. If new files were to be created/modified, they should be added there. For example, in order to integrate Ibex with an AXI interface, `iob_ibex2axi.sv` was developed.
 
 Other directories inside this repository can receive files, check following explanation to understand.
 
@@ -17,15 +18,15 @@ The second purpose of IOb-Ibex is to use a custom fork of [FuseSoC](https://gith
 
 There are three targets in this Makefile:
 
-    'generate-ibex' enters the Ibex submodule and generates/gathers the RTL files and dependencies;
+    generate-ibex - enters the Ibex submodule and generates/gathers the RTL files and dependencies;
     
-    'copy-ibex' copies the set of defined files to the build directory;
+    copy-ibex - copies the set of defined files to the build directory;
     
-    'clean-ibex' cleans the gathered (not the copies) files;
+    clean-ibex - cleans the gathered (not the copies) files;
 
 ## Generate and Gather Ibex Files
 
-The files can be gathered using a FuseSoC command. In order to prevent the need for prerequesite's installation, a Nix environment is used. Since a complex structure of dependencies is in place, this repository uses the Nix environment created for [Ibex-Demo-System](https://github.com/lowRISC/ibex-demo-system). Our 'flake.nix' file serves only as an intermediate, that inherits the packages of the 'submodules/ibex-demo-system/flake.nix' file.
+The files can be gathered using a FuseSoC command. In order to prevent the need for prerequesite's installation, a Nix environment is used. Since a complex structure of dependencies is in place, this repository uses the Nix environment created for [Ibex-Demo-System](https://github.com/lowRISC/ibex-demo-system). Our `flake.nix` file serves only as an intermediate, that inherits the packages of the `submodules/ibex-demo-system/flake.nix` file.
 That's why Ibex-Demo-System is added as a submodule.
 
 In the nix environment, we can run the command detailed in the [Ibex](https://github.com/lowRISC/ibex) repository:
@@ -40,21 +41,21 @@ Nix Flakes are still experimental, thus the flags used in the Makefile when the 
 ## Copying Files to the Build Directory
 
 As mentioned, to run Ibex, [IOb-SoC-Ibex](https://github.com/IObundle/iob-soc-ibex) should be used. This SoC uses [Py2HWSW](https://github.com/IObundle/py2hwsw/) framework to setup and run the system. The way it works, a Build Directory is created with all the sources and makefiles to build and run various tools on the SoC.
-The framework will create the directory and populate it with files and folders according to a specific struture (available in the [Py2HWSW](https://github.com/IObundle/py2hwsw/) documentation). As a consequence, the files in 'hardware/src/' will automatically be copied to the build directory.
+The framework will create the directory and populate it with files and folders according to a specific struture (available in the [Py2HWSW](https://github.com/IObundle/py2hwsw/) documentation). As a consequence, the files in `hardware/src/` will automatically be copied to the build directory.
 
-The Makefile is responsible to copy the remaining files. Some flags are used that allow the system to only copy a specific set of files (to avoid copying 'hardware/src/' files again, or primitives that are deemed unnecessary).
+The Makefile is responsible to copy the remaining files. Some flags are used that allow the system to only copy a specific set of files (to avoid copying `hardware/src/` files again, or primitives that are deemed unnecessary).
 
 
 ## Files Developed and/or Modified
 
-[Py2HWSW](https://github.com/IObundle/py2hwsw/) allows it's users to avoid developing in Verilog, instead a python file is required that is used to generate Verilog code - 'iob_ibex.py'.
-The version of [Py2HWSW](https://github.com/IObundle/py2hwsw/) used while developing did not allow for System Verilog generation, so 'iob_ibex.sv' was manually created and added to 'hardware/src'. Still, the python file is still mandatory, so this parameter is essential:
+[Py2HWSW](https://github.com/IObundle/py2hwsw/) allows it's users to avoid developing in Verilog, instead a python file is required that is used to generate Verilog code - `iob_ibex.py`.
+The version of [Py2HWSW](https://github.com/IObundle/py2hwsw/) used while developing did not allow for System Verilog generation, so `iob_ibex.sv` was manually created and added to `hardware/src`. Still, the python file is still mandatory, so this parameter is essential:
 
 ```Bash
 "generate_hw": False
 ```
 
-Without it, the framework would generate a 'iob_ibex.v' file that would corrupt the system.
+Without it, the framework would generate a `iob_ibex.v` file that would corrupt the system.
 
-In 'hardware/src/' two other files can be found. An Ibex interface for the AXI protocol, and 'ibex_top.sv'. The latter is also generated by 'generate-ibex', but must not be copied with 'copy-ibex'.
+In `hardware/src/` two other files can be found. An Ibex interface for the AXI protocol, and `ibex_top.sv`. The latter is also generated by `generate-ibex`, but must not be copied with `copy-ibex`.
 This file is the top module for the cpu and configures the Ibex core. Since a specific configuration is required by the work being done, it must be kept here. If it were to be eleminated, Ibex would run with the default configuration.
