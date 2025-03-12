@@ -1,3 +1,6 @@
 [submodule "submodules/ibex"]
 	path = submodules/ibex
 	url = https://github.com/lowRISC/ibex.git
+[submodule "submodules/ibex-demo-system"]
+	path = submodules/ibex-demo-system
+	url = https://github.com/lowRISC/ibex-demo-system.git
