@@ -23,19 +23,20 @@ generate-ibex:
 # Copy extracted files to the Build Directory
 # The copied files must not be UNWANTED, or be in iob-ibex/hardware/src
 copy-ibex:
-	@find submodules/ibex/$(SETUP_DIR) -type f \( -name "*.v" -o -name "*.sv" -o -name "*.vh" \) | while read file; do \
+	@mkdir -p "$(COPY_DIR)"  # Ensure the COPY_DIR exists
+	@find submodules/ibex/$(SETUP_DIR) -type f \( -name "*.v" -o -name "*.sv" -o -name "*.vh" -o -name "*.svh" \) | while read file; do \
 		basefile=$$(basename $$file); \
 		if [ "$(WITH_SOC)" = "1" ] && [ -f "$(HDW_SRC_DIR)/$$basefile" ]; then \
 			:; \
 		elif echo "$(UNWANTED_FILES)" | grep -q -w "$$basefile"; then \
 			:; \
 		else \
-			cp "$$file" "$(COPY_DIR)/" 1>/dev/null \
+			cp "$$file" "$(COPY_DIR)/" 1>/dev/null; \
 		fi; \
 	done
 
 clean-ibex:
 	@rm -rf submodules/ibex/$(SETUP_DIR)/*
 
-.PHONY: copy-ibex clean-ibex
+.PHONY: generate-ibex copy-ibex clean-ibex
 
