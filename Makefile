@@ -4,8 +4,8 @@
 
 # (c) 2022-Present IObundle, Lda, all rights reserved
 
-SETUP_DIR ?= build/ibex_out
-COPY_DIR ?= hardware/copy
+SETUP_DIR ?= build/ibex_out # This starts at submodules/ibex/
+COPY_DIR ?= hardware/copy # This starts at ./
 WITH_SOC ?= 1  # Flag to indicate if this Makefile is run from the top-level iob-soc-ibex Makefile
 
 # Add files that are not suposed to be copied to the Build Directory
@@ -20,7 +20,8 @@ generate-ibex:
 	nix --extra-experimental-features nix-command --no-warn-dirty --extra-experimental-features flakes develop --command bash -c "cd submodules/ibex && fusesoc --cores-root . run --target=lint --setup --build-root $(SETUP_DIR) lowrisc:ibex:ibex_top"
 
 # Copy extracted files to the Build Directory
-# The copied files must not be UNWANTED, or be in iob-ibex/hardware/src
+# The copied files must not be UNWANTED, or be in iob-ibex/{HDW_SRC_DIR}
+#	- because they are either not wanted, or already copied by P2HWSW
 copy-ibex:
 	@mkdir -p "$(COPY_DIR)"  # Ensure the COPY_DIR exists
 	@find submodules/ibex/$(SETUP_DIR) -type f \( -name "*.v" -o -name "*.sv" -o -name "*.vh" -o -name "*.svh" \) | while read file; do \

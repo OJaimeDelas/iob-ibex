@@ -153,7 +153,7 @@ module ibex_top import ibex_pkg::*; #(
   localparam bit          RegFileWrenCheck      = SecureIbex;
   localparam bit          RegFileRdataMuxCheck  = SecureIbex;
   localparam int unsigned RegFileDataWidth      = RegFileECC ? 32 + 7 : 32;
-  localparam bit          MemECC                = '0;
+  localparam bit          MemECC                = SecureIbex;
   localparam int unsigned MemDataWidth          = MemECC ? 32 + 7 : 32;
   // Icache parameters
   localparam int unsigned BusSizeECC        = ICacheECC ? (BUS_SIZE + 7) : BUS_SIZE;

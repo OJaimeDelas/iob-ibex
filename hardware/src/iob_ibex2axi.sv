@@ -139,7 +139,9 @@ module iob_ibex2axi #(
   assign dbus_awaddr_o = ibex_data_addr_i;
   assign dbus_awvalid_o = (ibex_data_req_i & ibex_data_we_i);
 
-  assign dbus_wdata_o = ibex_data_wdata_i;
+  assign dbus_wdata_o[IBEX_DATA_W-1:0] = ibex_data_wdata_i;
+  assign dbus_wdata_o[AXI_DATA_W-1 : AXI_DATA_W - IBEX_INTG_DATA_W] = ibex_data_wdata_intg_i;
+
   assign dbus_wvalid_o  = (ibex_data_req_i & ibex_data_we_i);
 
   assign dbus_bready_o = '1;
@@ -171,8 +173,11 @@ module iob_ibex2axi #(
   // This ibex_rvalid signal must return to 0 if no other gnt signal was set, so that ibex_rvalid is only 1 for exactly 1 cycle.
   // In the case that there are multiple consecutive memory accesses, there will be consecutive gnt signals, and ibex_rvalid can't reset
 
-  assign ibex_data_rdata_o = dbus_rdata_i;
-  assign ibex_instr_rdata_o = ibus_rdata_i;
+  assign ibex_data_rdata_o = dbus_rdata_i[IBEX_DATA_W-1:0];
+  assign ibex_data_rdata_intg_o = dbus_rdata_i[AXI_DATA_W-1 : AXI_DATA_W - IBEX_INTG_DATA_W];
+
+  assign ibex_instr_rdata_o = ibus_rdata_i[IBEX_DATA_W-1:0];
+  assign ibex_instr_rdata_intg_o = ibus_rdata_i[AXI_DATA_W-1 : AXI_DATA_W - IBEX_INTG_DATA_W];
 
   assign ibex_data_rvalid_o = dbus_rvalid_i | dbus_bvalid_i; //In a write, ibex_rvalid_o is only 1 if there is an error
   assign ibex_instr_rvalid_o = ibus_rvalid_i;

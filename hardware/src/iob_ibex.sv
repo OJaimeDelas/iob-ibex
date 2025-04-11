@@ -7,8 +7,8 @@ module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ADDR_W       = `IOB_IBEX_AXI_ADDR_W,
    parameter AXI_DATA_W       = `IOB_IBEX_AXI_DATA_W,
    parameter AXI_LEN_W        = `IOB_IBEX_AXI_LEN_W,
-   parameter IBEX_ADDR_W      = AXI_ADDR_W,
-   parameter IBEX_DATA_W      = AXI_DATA_W,
+   parameter IBEX_ADDR_W      = 32,
+   parameter IBEX_DATA_W      = 32,
    parameter IBEX_INTG_DATA_W = 7
 ) (
    // clk_en_rst_s
