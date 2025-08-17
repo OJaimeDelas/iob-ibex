@@ -9,7 +9,7 @@ COPY_DIR ?= hardware/copy
 WITH_SOC ?= 1  # Flag to indicate if this Makefile is run from the top-level iob-soc-ibex Makefile
 
 # Add files that are not suposed to be copied to the Build Directory
-UNWANTED_FILES ?= ibex_top.sv
+UNWANTED_FILES ?= ibex_top.sv ibex_controller.sv ibex_core.sv ibex_cs_registers.sv ibex_csr.sv ibex_decoder.sv ibex_dummy_instr.sv ibex_fetch_fifo.sv ibex_id_stage.sv ibex_if_stage.sv prim_assert.sv iob_reg_re_tmr.sv
 
 # Files in this folder will also not be copied
 HDW_SRC_DIR ?= hardware/src
