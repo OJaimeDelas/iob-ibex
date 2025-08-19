@@ -399,16 +399,19 @@ module ibex_id_stage #(
   // Multicycle Operation Stage Register //
   /////////////////////////////////////////
 
-  for (genvar i = 0; i < 2; i++) begin : gen_intermediate_val_reg
-    `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[i], imd_val_d_ex_i[i], imd_val_q[i], imd_val_q_reg_``i)
-    // always_ff @(posedge clk_i or negedge rst_ni) begin : intermediate_val_reg
-    //   if (!rst_ni) begin
-    //     imd_val_q[i] <= '0;
-    //   end else if (imd_val_we_ex_i[i]) begin
-    //     imd_val_q[i] <= imd_val_d_ex_i[i];
-    //   end
-    //  end
-  end
+  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[0], imd_val_d_ex_i[0], imd_val_q[0], imd_val_q_reg_0)
+  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[1], imd_val_d_ex_i[1], imd_val_q[1], imd_val_q_reg_1)
+
+  // for (genvar i = 0; i < 2; i++) begin : gen_intermediate_val_reg
+  //   `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[i], imd_val_d_ex_i[i], imd_val_q[i], imd_val_q_reg_``i)
+  //   // always_ff @(posedge clk_i or negedge rst_ni) begin : intermediate_val_reg
+  //   //   if (!rst_ni) begin
+  //   //     imd_val_q[i] <= '0;
+  //   //   end else if (imd_val_we_ex_i[i]) begin
+  //   //     imd_val_q[i] <= imd_val_d_ex_i[i];
+  //   //   end
+  //   //  end
+  // end
 
   assign imd_val_q_ex_o = imd_val_q;
 

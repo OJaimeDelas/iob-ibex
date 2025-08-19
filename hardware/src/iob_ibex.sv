@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
+`include "tmr_config.svh"
 
 module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ID_W         = `IOB_IBEX_AXI_ID_W,

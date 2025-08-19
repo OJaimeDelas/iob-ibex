@@ -239,28 +239,37 @@ module ibex_fetch_fifo #(
   //   end
   // end
 
-  for (genvar i = 0; i < DEPTH; i++) begin : g_fifo_regs
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], rdata_d[i], rdata_q[i], rdata_``i)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], err_d[i], err_q[i], err_``i)
-    // if (ResetAll) begin : g_rdata_ra
-    //   always_ff @(posedge clk_i or negedge rst_ni) begin
-    //     if (!rst_ni) begin
-    //       rdata_q[i] <= '0;
-    //       err_q[i]   <= '0;
-    //     end else if (entry_en[i]) begin
-    //       rdata_q[i] <= rdata_d[i];
-    //       err_q[i]   <= err_d[i];
-    //     end
-    //   end
-    // end else begin : g_rdata_nr
-    //   always_ff @(posedge clk_i) begin
-    //     if (entry_en[i]) begin
-    //       rdata_q[i] <= rdata_d[i];
-    //       err_q[i]   <= err_d[i];
-    //     end
-    //   end
-    // end
-  end
+
+
+  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], rdata_d[0], rdata_q[0], rdata_0)
+  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], err_d[0], err_q[0], err_0)
+  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], rdata_d[1], rdata_q[1], rdata_1)
+  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], err_d[1], err_q[1], err_1)
+  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], rdata_d[2], rdata_q[2], rdata_2)
+  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], err_d[2], err_q[2], err_2)
+
+  // for (genvar i = 0; i < DEPTH; i++) begin : g_fifo_regs
+  // `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], rdata_d[i], rdata_q[i], rdata_``i)
+  // `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], err_d[i], err_q[i], err_``i)
+  //   // if (ResetAll) begin : g_rdata_ra
+  //   //   always_ff @(posedge clk_i or negedge rst_ni) begin
+  //   //     if (!rst_ni) begin
+  //   //       rdata_q[i] <= '0;
+  //   //       err_q[i]   <= '0;
+  //   //     end else if (entry_en[i]) begin
+  //   //       rdata_q[i] <= rdata_d[i];
+  //   //       err_q[i]   <= err_d[i];
+  //   //     end
+  //   //   end
+  //   // end else begin : g_rdata_nr
+  //   //   always_ff @(posedge clk_i) begin
+  //   //     if (entry_en[i]) begin
+  //   //       rdata_q[i] <= rdata_d[i];
+  //   //       err_q[i]   <= err_d[i];
+  //   //     end
+  //   //   end
+  //   // end
+  // end
 
   ////////////////
   // Assertions //

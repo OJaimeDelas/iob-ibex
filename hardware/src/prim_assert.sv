@@ -12,8 +12,6 @@
 `ifndef PRIM_ASSERT_SV
 `define PRIM_ASSERT_SV
 
-
-
 /////////////////////
 // FATORI-V macros //
 /////////////////////
@@ -23,10 +21,14 @@
 //  This macro is necessary because instantiating hundreds of registers would result in thousands of new code lines
 
 `define IOB_REG_TMR(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \
+    `ifndef TMR_CONFIG_INCLUDED \
+        `define TMR_CONFIG_INCLUDED \
+        `include "tmr_config.svh" \
+    `endif \
     logic PREFIX``_maj_err; \
     logic PREFIX``_min_err; \
     logic [2:0] PREFIX``_err_loc; \
-    iob_reg_re_tmr #(.DATA_W(DATA_W_i), .RST_VAL(RST_VAL_i), .TMR_EN(TMR_EN_i)) \
+    iob_reg_re_tmr #(.DATA_W(DATA_W_i), .RST_VAL(RST_VAL_i), .TMR_EN(`PREFIX``_TMR_EN)) \
     PREFIX``_reg_inst ( \
         .clk_i     (clk_i), \
         .cke_i     (1'b1), \
@@ -39,6 +41,7 @@
         .min_err_o (PREFIX``_min_err), \
         .err_loc_o (PREFIX``_err_loc) \
     );
+
 
 
 
