@@ -1173,8 +1173,12 @@ module ibex_top import ibex_pkg::*; #(
     pending_access_t pending_dside_accesses_d[MaxOutstandingDSideAccesses];
     pending_access_t pending_dside_accesses_shifted[MaxOutstandingDSideAccesses];
 
+    // Manually instantiate the IOB_REG_TMR macros
+    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[0], pending_dside_accesses_q[0], pending_dside_accesses_0)
+    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[1], pending_dside_accesses_q[1], pending_dside_accesses_1)
+
+
     for (genvar i = 0; i < MaxOutstandingDSideAccesses; i++) begin : g_dside_tracker
-      `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[i], pending_dside_accesses_q[i], pending_dside_accesses_``i)
       // always_ff @(posedge clk or negedge rst_ni) begin
       //   if (!rst_ni) begin
       //     pending_dside_accesses_q[i] <= '0;
