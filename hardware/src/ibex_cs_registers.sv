@@ -807,7 +807,7 @@ module ibex_cs_registers #(
   end
 
   // Update current priv level
-  `IOB_REG_TMR(2, PRIV_LVL_M, '0, !rst_ni, '1, priv_lvl_d, priv_lvl_q, priv_lvl)
+  `IOB_REG_TMR_ENUM(priv_lvl_e, PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, priv_lvl_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin

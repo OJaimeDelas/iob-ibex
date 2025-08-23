@@ -341,7 +341,7 @@ module ibex_controller #(
       (mem_resp_intg_err_irq_pending_q & ~mem_resp_intg_err_irq_clear) | mem_resp_intg_err_irq_set;
 
     `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, mem_resp_intg_err_irq_pending_d, mem_resp_intg_err_irq_pending_q, mem_resp_intg_err_irq_pending_q)
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, mem_resp_intg_err_addr_q);
+    `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, mem_resp_intg_err_addr_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     mem_resp_intg_err_irq_pending_q <= 1'b0;
@@ -437,8 +437,9 @@ module ibex_controller #(
                          debug_req_i                        ? DBG_CAUSE_HALTREQ :
                          do_single_step_d                   ? DBG_CAUSE_STEP    :
                                                               DBG_CAUSE_NONE ;
+                                                              
+  `IOB_REG_TMR_ENUM(dbg_cause_e, DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, debug_cause_q)
 
-  `IOB_REG_TMR(3, DBG_CAUSE_NONE, '0, !rst_ni, '1, debug_cause_d, debug_cause_q, debug_cause_q)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     debug_cause_q <= DBG_CAUSE_NONE;
@@ -874,7 +875,8 @@ module ibex_controller #(
   assign instr_valid_clear_o = ~(stall | retain_id) | flush_id;
 
   // update registers
-  `IOB_REG_TMR(4, RESET, '0, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, ctrl_fsm_cs)
+
+  `IOB_REG_TMR_ENUM(ctrl_fsm_e, RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, ctrl_fsm_cs)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, nmi_mode_d, nmi_mode_q, nmi_mode_q)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, do_single_step_d, do_single_step_q, do_single_step_q)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, debug_mode_d, debug_mode_q, debug_mode_q)

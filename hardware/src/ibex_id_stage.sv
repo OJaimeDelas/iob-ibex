@@ -788,7 +788,8 @@ module ibex_id_stage #(
   typedef enum logic { FIRST_CYCLE, MULTI_CYCLE } id_fsm_e;
   id_fsm_e id_fsm_q, id_fsm_d;
 
-  `IOB_REG_TMR(2, FIRST_CYCLE, '0, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, id_fsm)
+  `IOB_REG_TMR_ENUM(id_fsm_e, FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, id_fsm_q)
+
   // always_ff @(posedge clk_i or negedge rst_ni) begin : id_pipeline_reg
   //   if (!rst_ni) begin
   //     id_fsm_q <= FIRST_CYCLE;

@@ -493,7 +493,8 @@ module ibex_load_store_unit #(
   assign lsu_req_done_o = (lsu_req_i | (ls_fsm_cs != IDLE)) & (ls_fsm_ns == IDLE);
 
   // registers for FSM
-  `IOB_REG_TMR(3, IDLE, '0, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, ls_fsm)
+  
+  `IOB_REG_TMR_ENUM(ls_fsm_e, IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, ls_fsm_cs)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, handle_misaligned_d, handle_misaligned_q, handle_misaligned)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, pmp_err_d, pmp_err_q, pmp_err)
   `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, lsu_err_d, lsu_err_q, lsu_err)

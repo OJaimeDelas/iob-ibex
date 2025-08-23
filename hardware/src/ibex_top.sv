@@ -1187,14 +1187,19 @@ module ibex_top import ibex_pkg::*; #(
       //   end
       // end
 
-      always_comb begin
-        pending_dside_accesses_shifted[i] = pending_dside_accesses_q[i];
-
-        if (data_rvalid_i) begin
-          if (i != MaxOutstandingDSideAccesses - 1) begin
-            pending_dside_accesses_shifted[i] = pending_dside_accesses_q[i + 1];
-          end else begin
-            pending_dside_accesses_shifted[i] = '0;
+      // Slightly changed code from lowrisc:ibex, to correct a warning
+      for (genvar i = 0; i < MaxOutstandingDSideAccesses; i++) begin : g_track_pending
+        if (i < MaxOutstandingDSideAccesses-1) begin : g_mid  // generate-time condition
+          always_comb begin
+            pending_dside_accesses_shifted[i] = pending_dside_accesses_q[i];
+            if (data_rvalid_i)
+              pending_dside_accesses_shifted[i] = pending_dside_accesses_q[i+1];
+          end
+        end else begin : g_last
+          always_comb begin
+            pending_dside_accesses_shifted[i] = pending_dside_accesses_q[i];
+            if (data_rvalid_i)
+              pending_dside_accesses_shifted[i] = '0;
           end
         end
       end

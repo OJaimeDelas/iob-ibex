@@ -242,7 +242,7 @@
   ],
   
   "ibex_cs_registers.sv": [
-    "priv_lvl",
+    "priv_lvl_q",
     "mcountinhibit"
   ],
   
@@ -288,7 +288,7 @@
     "branch_set_raw",
     "branch_jump_set_done",
     "branch_taken",
-    "id_fsm"
+    "id_fsm_q"
   ],
 
   "ibex_top.sv": [
@@ -345,7 +345,7 @@
     "data_sign_ext",
     "data_we",
     "addr_last",
-    "ls_fsm",
+    "ls_fsm_cs",
     "handle_misaligned",
     "pmp_err",
     "lsu_err",
