@@ -172,6 +172,7 @@ module ibex_prefetch_buffer #(
                         // Current address + 4
                         {{29{1'b0}},(valid_new_req & ~valid_req_q),2'b00};
 
+<<<<<<< HEAD
   if (ResetAll) begin : g_fetch_addr_ra
     always_ff @(posedge clk_i or negedge rst_ni) begin
       if (!rst_ni) begin
@@ -187,6 +188,24 @@ module ibex_prefetch_buffer #(
       end
     end
   end
+=======
+  `IOB_REG_TMR($bits(fetch_addr_q), '0, '0, (ResetAll ? !rst_ni : '0), fetch_addr_en, fetch_addr_d, fetch_addr_q, fetch_addr)
+  // if (ResetAll) begin : g_fetch_addr_ra
+  //   always_ff @(posedge clk_i or negedge rst_ni) begin
+  //     if (!rst_ni) begin
+  //       fetch_addr_q <= '0;
+  //     end else if (fetch_addr_en) begin
+  //       fetch_addr_q <= fetch_addr_d;
+  //     end
+  //   end
+  // end else begin : g_fetch_addr_nr
+  //   always_ff @(posedge clk_i) begin
+  //     if (fetch_addr_en) begin
+  //       fetch_addr_q <= fetch_addr_d;
+  //     end
+  //   end
+  // end
+>>>>>>> @{-1}
 
   // Address mux
   assign instr_addr = valid_req_q ? stored_addr_q :
@@ -241,6 +260,7 @@ module ibex_prefetch_buffer #(
   // Registers //
   ///////////////
 
+<<<<<<< HEAD
   always_ff @(posedge clk_i or negedge rst_ni) begin
     if (!rst_ni) begin
       valid_req_q          <= 1'b0;
@@ -254,6 +274,26 @@ module ibex_prefetch_buffer #(
       branch_discard_q     <= branch_discard_s;
     end
   end
+=======
+  `IOB_REG_TMR($bits(valid_req_q),         '0, '0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         valid_req)
+  `IOB_REG_TMR($bits(discard_req_q),       '0, '0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       discard_req)
+  `IOB_REG_TMR($bits(rdata_outstanding_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, rdata_outstanding)
+  `IOB_REG_TMR($bits(branch_discard_q),    '0, '0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    branch_discard)
+
+  // always_ff @(posedge clk_i or negedge rst_ni) begin
+  //   if (!rst_ni) begin
+  //     valid_req_q          <= 1'b0;
+  //     discard_req_q        <= 1'b0;
+  //     rdata_outstanding_q  <= 'b0;
+  //     branch_discard_q     <= 'b0;
+  //   end else begin
+  //     valid_req_q          <= valid_req_d;
+  //     discard_req_q        <= discard_req_d;
+  //     rdata_outstanding_q  <= rdata_outstanding_s;
+  //     branch_discard_q     <= branch_discard_s;
+  //   end
+  // end
+>>>>>>> @{-1}
 
   /////////////
   // Outputs //
