@@ -17,7 +17,7 @@ module iob_ibex import ibex_pkg::*; #(
    input                       cke_i,
    input                       arst_i,
    // rst_i
-   input                       rst_i,
+   //input                       rst_i,
    // i_bus_m
    output [AXI_ADDR_W - 2-1:0] ibus_axi_araddr_o,
    output [             3-1:0] ibus_axi_arprot_o,
@@ -365,7 +365,8 @@ module iob_ibex import ibex_pkg::*; #(
    assign instr_addr_o          = instr_addr_int[31:2];
    assign data_addr_o           = data_addr_int[31:2];
 
-   assign cpu_reset             = (rst_i) | (arst_i);
+   //assign cpu_reset             = (rst_i) | (arst_i);
+   assign cpu_reset             = (arst_i);
    assign cpu_reset_neg         = !(cpu_reset);
 
    assign ibus_axi_awvalid_o    = 1'b0;
