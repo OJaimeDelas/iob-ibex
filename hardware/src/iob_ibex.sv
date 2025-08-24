@@ -1,6 +1,7 @@
 `timescale 1ns / 1ps
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
+`include "tmr_config.svh"
 
 module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ID_W         = `IOB_IBEX_AXI_ID_W,
@@ -265,11 +266,11 @@ module iob_ibex import ibex_pkg::*; #(
  */
 
    parameter bit RV32E = 1'b0;
-   parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MSingleCycle;
-   parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BOTEarlGrey;
-   parameter ibex_pkg::regfile_e RegFile = ibex_pkg::RegFileFF;
-   parameter bit BranchTargetALU = 1'b1;
-   parameter bit WritebackStage = 1'b1;
+   parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MNone;
+   parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BNone;
+   parameter ibex_pkg::regfile_e RegFile = ibex_pkg::RegFileFPGA;
+   parameter bit BranchTargetALU = 1'b0;
+   parameter bit WritebackStage = 1'b0;
    parameter bit ICache = 1'b0;
    parameter bit ICacheECC = 1'b0;
    parameter bit ICacheScramble = 1'b0;
