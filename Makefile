@@ -8,13 +8,9 @@ SETUP_DIR ?= build/ibex_out
 COPY_DIR ?= hardware/copy
 WITH_SOC ?= 1  # Flag to indicate if this Makefile is run from the top-level iob-soc-ibex Makefile
 
-<<<<<<< HEAD
-# Add files that are not suposed to be copied from ibex repo to the Build Directory
-NO_GENERATE_FILES ?= ibex_top.sv ibex_controller.sv ibex_core.sv ibex_cs_registers.sv ibex_csr.sv ibex_decoder.sv ibex_dummy_instr.sv ibex_fetch_fifo.sv ibex_id_stage.sv ibex_if_stage.sv prim_assert.sv iob_reg_re_tmr.sv ibex_load_store_unit.sv ibex_prefetch_buffer.sv
-=======
 # Add files that are not suposed to be copied from ibex repo to the Build Directory (because there is an updated version in iob_ibex, or are not needed)
+
 NO_GENERATE_FILES ?= ibex_wb_stage.sv ibex_lockstep.sv ibex_top.sv ibex_controller.sv ibex_core.sv ibex_cs_registers.sv ibex_csr.sv ibex_decoder.sv ibex_dummy_instr.sv ibex_fetch_fifo.sv ibex_id_stage.sv ibex_if_stage.sv prim_assert.sv iob_reg_re_tmr.sv ibex_load_store_unit.sv ibex_prefetch_buffer.sv prim_mubi4_dec.sv prim_mubi4_sender.sv prim_mubi4_sync.sv prim_mubi8_dec.sv prim_mubi8_sender.sv prim_mubi8_sync.sv prim_mubi12_dec.sv prim_mubi12_sender.sv prim_mubi12_sync.sv prim_mubi16_dec.sv prim_mubi16_sender.sv prim_mubi16_sync.sv prim_mubi20_dec.sv prim_mubi20_sender.sv prim_mubi20_sync.sv prim_mubi24_dec.sv prim_mubi24_sender.sv prim_mubi24_sync.sv prim_mubi28_dec.sv prim_mubi28_sender.sv prim_mubi28_sync.sv prim_mubi32_dec.sv prim_mubi32_sender.sv prim_mubi32_sync.sv
->>>>>>> @{-1}
 
 # Files in this folder will also not be copied
 HDW_SRC_DIR ?= hardware/src
@@ -25,11 +21,7 @@ TMR_SCRIPT   		?= select_tmr.py
 TMR_FOLDER	 		?= fault_tolerance/tmr
 TMR_FINAL_FOLDER   	?= hardware/src
 TMR_WRAP_FILE     	?= wrapped_registers.json
-<<<<<<< HEAD
-TMR_PERCENT 		?= 50
-=======
 TMR_PERCENT 		?= 0
->>>>>>> @{-1}
 TMR_SEED     		?=
 TMR_OUT      		?= $(TMR_FINAL_FOLDER)/tmr_config.svh
 TMR_FORCED_FILE   	?= forced_enabled_files.json         	# JSON with forced-enable registers/files

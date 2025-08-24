@@ -353,11 +353,6 @@
     "fcov_mis_bus_err_1"
   ],
 
-<<<<<<< HEAD
-  "ibex_prefetch_buffer.sv": [
-    "stored_addr"
-  ]
-=======
   "ibex_lockstep.sv": [
     "shadow_inputs_0",
     "shadow_inputs_1",
@@ -393,5 +388,4 @@
 
 
 
->>>>>>> @{-1}
 }
