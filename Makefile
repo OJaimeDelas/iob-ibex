@@ -23,7 +23,7 @@ TMR_FINAL_FOLDER   	?= hardware/src
 TMR_WRAP_FILE     	?= wrapped_registers.json
 TMR_PERCENT 		?= 0
 TMR_SEED     		?=
-TMR_OUT      		?= $(TMR_FINAL_FOLDER)/tmr_config.svh
+TMR_OUT      		?= $(TMR_FINAL_FOLDER)/fatori_tmr_config.svh
 TMR_FORCED_FILE   	?= forced_enabled_files.json         	# JSON with forced-enable registers/files
 TMR_FILE_INCLUDE  	?= 1        							# set to 1 to include forced regs in percentage
 TMR_DIS_FLAGS     	?= dis_flags.json         				# JSON with disable flags
@@ -70,7 +70,7 @@ tmr-config:
 		--dis_flags $(TMR_FOLDER)/$(TMR_DIS_FLAGS) \
 		$(if $(filter 1,$(VERBOSE)),--verbose); \
 	
-	@echo "$(GREEN)[SUCCESS] tmr_config.svh generated!$(RESET)"
+	@echo "$(GREEN)[SUCCESS] fatori_tmr_config.svh generated!$(RESET)"
 
 
 

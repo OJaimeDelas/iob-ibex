@@ -146,14 +146,14 @@ module ibex_top import ibex_pkg::*; #(
   input logic                          scan_rst_ni
 );
 
-  localparam bit          Lockstep              = SecureIbex;
+  localparam bit          Lockstep              = `FTM_LOCKSTEP;
   localparam bit          ResetAll              = Lockstep;
-  localparam bit          DummyInstructions     = SecureIbex;
-  localparam bit          RegFileECC            = SecureIbex;
-  localparam bit          RegFileWrenCheck      = SecureIbex;
-  localparam bit          RegFileRdataMuxCheck  = SecureIbex;
+  localparam bit          DummyInstructions     = `FTM_DUMMY_INSTR;
+  localparam bit          RegFileECC            = `FTM_RF_ECC;
+  localparam bit          RegFileWrenCheck      = `FTM_RF_WE_GLITCH;
+  localparam bit          RegFileRdataMuxCheck  = `FTM_RF_RADDR_GLITCH;
   localparam int unsigned RegFileDataWidth      = RegFileECC ? 32 + 7 : 32;
-  localparam bit          MemECC                = '0;
+  localparam bit          MemECC                = `FTM_BUS_INTEGRITY;
   localparam int unsigned MemDataWidth          = MemECC ? 32 + 7 : 32;
   // Icache parameters
   localparam int unsigned BusSizeECC        = ICacheECC ? (BUS_SIZE + 7) : BUS_SIZE;
@@ -207,11 +207,25 @@ module ibex_top import ibex_pkg::*; #(
 
   ibex_mubi_t                  fetch_enable_buf;
 
+  `ifndef SYNTHESIS
+  initial begin
+    $display("FTM_SECURE_GUARDS=%0d  FTM_BUS_INTEGRITY=%0d",
+            `FTM_SECURE_GUARDS, `FTM_BUS_INTEGRITY);
+    $display("FTM_LOCKSTEP=%0d  FTM_RF_ECC=%0d  FTM_RF_WE_GLITCH=%0d  FTM_RF_RADDR_GLITCH=%0d",
+            `FTM_LOCKSTEP, `FTM_RF_ECC, `FTM_RF_WE_GLITCH, `FTM_RF_RADDR_GLITCH);
+    $display("FTM_ICACHE_ECC=%0d  FTM_HARDENED_PC=%0d  FTM_SHADOW_CSRS=%0d",
+            `FTM_ICACHE_ECC, `FTM_HARDENED_PC, `FTM_SHADOW_CSRS);
+    $display("FTM_DATA_INDEP_TIMING=%0d  FTM_DUMMY_INSTR=%0d  FTM_FAULT_MGR=%0d",
+            `FTM_DATA_INDEP_TIMING, `FTM_DUMMY_INSTR, `FTM_FAULT_MGR);
+  end
+  `endif
+
+
   /////////////////////
   // Main clock gate //
   /////////////////////
 
-  if (SecureIbex) begin : g_clock_en_secure
+  if (`FTM_SECURE_GUARDS) begin : g_clock_en_secure
     // For secure Ibex core_busy_q must be a specific multi-bit pattern to enable the clock.
     prim_flop #(
       .Width($bits(ibex_mubi_t)),
@@ -1238,7 +1252,7 @@ module ibex_top import ibex_pkg::*; #(
     // Should only see a request response if we're expecting one
     `ASSERT(PendingAccessTrackingCorrect, data_rvalid_i |-> pending_dside_accesses_q[0])
 
-    if (SecureIbex) begin : g_secure_ibex_mem_assert
+    if (`FTM_SECURE_GUARDS) begin : g_secure_ibex_mem_assert
       // For SecureIbex responses to both writes and reads must specify rdata and rdata_intg (for
       // writes rdata is effectively ignored by rdata_intg still checked against rdata)
       `ASSERT_KNOWN_IF(IbexDataRPayloadX, {data_rdata_i, data_rdata_intg_i},

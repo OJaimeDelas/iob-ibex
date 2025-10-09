@@ -16,10 +16,16 @@
 // FATORI-V macros //
 /////////////////////
 
+// FTM Enabling Macros
+`ifndef FATORI_FEATURES_SVH
+  `include "fatori_features.svh"
+`endif
+
+
 `define IOB_REG_TMR(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \
-  `ifndef TMR_CONFIG_INCLUDED                                                   \
-    `define TMR_CONFIG_INCLUDED                                                 \
-    `include "tmr_config.svh"                                                   \
+  `ifndef FATORI_TMR_CONFIG_INCLUDED                                                   \
+    `define FATORITMR_CONFIG_INCLUDED                                                 \
+    `include "fatori_tmr_config.svh"                                                   \
   `endif                                                                        \
   logic PREFIX``_maj_err;                                                       \
   logic PREFIX``_min_err;                                                       \
@@ -49,9 +55,9 @@
 // ENUM_T : the enum type (e.g., dbg_cause_e)
 // RST_ENUM: the enum reset literal (e.g., DBG_CAUSE_NONE)
 `define IOB_REG_TMR_ENUM(ENUM_T, RST_ENUM, RST, EN, DIN_ENUM, DOUT_ENUM, PREFIX) \
-  `ifndef TMR_CONFIG_INCLUDED                                                     \
-    `define TMR_CONFIG_INCLUDED                                                   \
-    `include "tmr_config.svh"                                                     \
+  `ifndef FATORI_TMR_CONFIG_INCLUDED                                                     \
+    `define FATORI_TMR_CONFIG_INCLUDED                                                   \
+    `include "fatori_tmr_config.svh"                                                     \
   `endif                                                                          \
   logic PREFIX``_maj_err;                                                         \
   logic PREFIX``_min_err;                                                         \

@@ -360,8 +360,8 @@ def write_svh_file(output_file, tmr_selection, json_file, folder, percentage, se
         # Now, there is the possibility to over-include it.
         # For that, we use "ifndef"
 
-        f.write("`ifndef TMR_CONFIG_SVH\n")
-        f.write("`define TMR_CONFIG_SVH\n\n")
+        f.write("`ifndef FATORI_TMR_CONFIG_SVH\n")
+        f.write("`define FATORI_TMR_CONFIG_SVH\n\n")
 
 
 

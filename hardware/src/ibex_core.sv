@@ -29,6 +29,7 @@ module ibex_core import ibex_pkg::*; #(
   parameter bit                     WritebackStage   = 1'b0,
   parameter bit                     ICache           = 1'b0,
   parameter bit                     ICacheECC        = 1'b0,
+  parameter bit                     SecureIbex       = 1'b0, //Unused
   parameter int unsigned            BusSizeECC       = BUS_SIZE,
   parameter int unsigned            TagSizeECC       = IC_TAG_SIZE,
   parameter int unsigned            LineSizeECC      = IC_LINE_SIZE,
@@ -38,7 +39,6 @@ module ibex_core import ibex_pkg::*; #(
   parameter bit                     ResetAll         = 1'b0,
   parameter lfsr_seed_t             RndCnstLfsrSeed  = RndCnstLfsrSeedDefault,
   parameter lfsr_perm_t             RndCnstLfsrPerm  = RndCnstLfsrPermDefault,
-  parameter bit                     SecureIbex       = 1'b0,
   parameter bit                     DummyInstructions= 1'b0,
   parameter bit                     RegFileECC       = 1'b0,
   parameter int unsigned            RegFileDataWidth = 32,
@@ -169,9 +169,9 @@ module ibex_core import ibex_pkg::*; #(
 
   localparam int unsigned PMPNumChan      = 3;
   // SEC_CM: CORE.DATA_REG_SW.SCA
-  localparam bit          DataIndTiming     = SecureIbex;
-  localparam bit          PCIncrCheck       = SecureIbex;
-  localparam bit          ShadowCSR         = 1'b0;
+  localparam bit          DataIndTiming     = `FTM_DATA_INDEP_TIMING;
+  localparam bit          PCIncrCheck       = `FTM_HARDENED_PC;
+  localparam bit          ShadowCSR         = `FTM_SHADOW_CSRS;
 
   // IF/ID signals
   logic        dummy_instr_id;
@@ -386,7 +386,7 @@ module ibex_core import ibex_pkg::*; #(
 
   // Before going to sleep, wait for I- and D-side
   // interfaces to finish ongoing operations.
-  if (SecureIbex) begin : g_core_busy_secure
+  if (`FTM_SECURE_GUARDS) begin : g_core_busy_secure
     // For secure Ibex, the individual bits of core_busy_o are generated from different copies of
     // the various busy signal.
     localparam int unsigned NumBusySignals = 3;
@@ -521,7 +521,7 @@ module ibex_core import ibex_pkg::*; #(
   `ASSERT_INIT(IbexMuBiSecureOffBottomBitClear, IbexMuBiOff[0] == 1'b0)
 
   // fetch_enable_i can be used to stop the core fetching new instructions
-  if (SecureIbex) begin : g_instr_req_gated_secure
+  if (`FTM_SECURE_GUARDS) begin : g_instr_req_gated_secure
     // For secure Ibex fetch_enable_i must be a specific multi-bit pattern to enable instruction
     // fetch
     // SEC_CM: FETCH.CTRL.LC_GATED
@@ -855,7 +855,7 @@ module ibex_core import ibex_pkg::*; #(
     .instr_done_wb_o(instr_done_wb)
   );
 
-  if (SecureIbex) begin : g_check_mem_response
+  if (`FTM_SECURE_GUARDS) begin : g_check_mem_response
     // For secure configurations only process load/store responses if we're expecting them to guard
     // against false responses being injected on to the bus
     assign lsu_load_err  = lsu_load_err_raw  & (outstanding_load_wb  | expecting_load_resp_id);
@@ -2091,7 +2091,7 @@ end
 `endif
 
   // Certain parameter combinations are not supported
-  `ASSERT_INIT(IllegalParamSecure, !(SecureIbex && (RV32M == RV32MNone)))
+  `ASSERT_INIT(IllegalParamSecure, !(`FTM_DUMMY_INSTR && (RV32M == RV32MNone)))
 
   // If the ID stage signals its ready the mult/div FSMs must be idle in the following cycle
   `ASSERT(MultDivFSMIdleOnIdReady, id_in_ready |=> ex_block_i.sva_multdiv_fsm_idle)

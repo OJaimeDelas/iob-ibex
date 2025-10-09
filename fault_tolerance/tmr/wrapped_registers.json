@@ -384,6 +384,15 @@
       "name": "dummy_instr_wb",
       "disable":"dis_DummyInstructions"
     }
+  ],
+  
+  "ibex_fault_mgr.sv":[
+    "minor_cnt_o",
+    "major_cnt_o",
+    "minor_seen_o",
+    "fault_sticky_o",
+    "fetch_en_q",
+    "state_q"
   ]
 
 
