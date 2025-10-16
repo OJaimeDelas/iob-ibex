@@ -207,19 +207,6 @@ module ibex_top import ibex_pkg::*; #(
 
   ibex_mubi_t                  fetch_enable_buf;
 
-  `ifndef SYNTHESIS
-  initial begin
-    $display("FTM_SECURE_GUARDS=%0d  FTM_BUS_INTEGRITY=%0d",
-            `FTM_SECURE_GUARDS, `FTM_BUS_INTEGRITY);
-    $display("FTM_LOCKSTEP=%0d  FTM_RF_ECC=%0d  FTM_RF_WE_GLITCH=%0d  FTM_RF_RADDR_GLITCH=%0d",
-            `FTM_LOCKSTEP, `FTM_RF_ECC, `FTM_RF_WE_GLITCH, `FTM_RF_RADDR_GLITCH);
-    $display("FTM_ICACHE_ECC=%0d  FTM_HARDENED_PC=%0d  FTM_SHADOW_CSRS=%0d",
-            `FTM_ICACHE_ECC, `FTM_HARDENED_PC, `FTM_SHADOW_CSRS);
-    $display("FTM_DATA_INDEP_TIMING=%0d  FTM_DUMMY_INSTR=%0d  FTM_FAULT_MGR=%0d",
-            `FTM_DATA_INDEP_TIMING, `FTM_DUMMY_INSTR, `FTM_FAULT_MGR);
-  end
-  `endif
-
 
   /////////////////////
   // Main clock gate //

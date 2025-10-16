@@ -59,11 +59,56 @@
 // Shadow CSRs (complement mirror + consistency check). Typically OFF with lockstep.
 `__FTM_DEF_IF_UNDEF(FTM_SHADOW_CSRS,           1)
 
-// Fault manager block: captures alerts, halts fetch on major, optional reset request.
-// Kept ON by default independent of groups, but still overrideable.
-`__FTM_DEF_IF_UNDEF(FTM_RESET_ON_MAJOR,              1) // request sync reset on any major alert
-`__FTM_DEF_IF_UNDEF(FTM_WAIT_SLEEP_BEFORE_RESET,     1) // wait for core sleep before requesting reset
-`__FTM_DEF_IF_UNDEF(FTM_FAULT_MGR,             1)
+
+
+// -----------------------------------------------------------------------------
+// Wrapped Registers MACRO
+// -----------------------------------------------------------------------------
+
+
+
+// Wrapper for usual wrapped registers
+// TMR_EN_i unused
+`define IOB_REG_IBEX(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \                                                                                                                  \
+  localparam int PREFIX``_DW = $bits(DOUT);                                     \
+  logic [PREFIX``_DW-1:0] PREFIX``_din_raw;                                     \
+  logic [PREFIX``_DW-1:0] PREFIX``_dout_raw;                                    \
+  assign PREFIX``_din_raw  = DIN;                                               \
+  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(RST_VAL_i))                   \
+  PREFIX``_reg_inst (                                                           \
+    .clk_i     (clk_i),                                                         \
+    .cke_i     (1'b1),                                                          \
+    .arst_i    (RST),                                                           \
+    .en_i      (EN),                                                            \
+    .rst_i     (RST),                                                           \
+    .data_i    (PREFIX``_din_raw),                                              \
+    .data_o    (PREFIX``_dout_raw)                                              \
+  );                                                                            \
+  assign DOUT = PREFIX``_dout_raw;
+
+
+// Enum-safe wrapper for wrapped registers.
+// ENUM_T : the enum type (e.g., dbg_cause_e)
+// RST_ENUM: the enum reset literal (e.g., DBG_CAUSE_NONE)
+`define IOB_REG_IBEX_ENUM(ENUM_T, RST_ENUM, RST, EN, DIN_ENUM, DOUT_ENUM, PREFIX) \
+  localparam int PREFIX``_DW = $bits(ENUM_T);                                     \
+  typedef logic [PREFIX``_DW-1:0] PREFIX``_raw_t;                                 \
+  PREFIX``_raw_t PREFIX``_din_raw;                                                \
+  PREFIX``_raw_t PREFIX``_dout_raw;                                               \
+  localparam PREFIX``_raw_t PREFIX``_RST_RAW = PREFIX``_raw_t'(RST_ENUM);         \
+  assign PREFIX``_din_raw = PREFIX``_raw_t'(DIN_ENUM);                             \
+  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(PREFIX``_RST_RAW))              \
+  PREFIX``_reg_inst (                                                             \
+    .clk_i     (clk_i),                                                           \
+    .cke_i     (1'b1),                                                            \
+    .arst_i    (RST),                                                             \
+    .en_i      (EN),                                                              \
+    .rst_i     (RST),                                                             \
+    .data_i    (PREFIX``_din_raw),                                                \
+    .data_o    (PREFIX``_dout_raw)                                             \
+  );                                                                              \
+  assign DOUT_ENUM = ENUM_T'(PREFIX``_dout_raw);
+
 
 
 // -----------------------------------------------------------------------------

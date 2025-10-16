@@ -382,43 +382,9 @@ module iob_ibex import ibex_pkg::*; #(
    );
 
 
-
-   // ===== Fault manager (optional) =====
-   generate
-   if (`FTM_FAULT_MGR) begin : g_fault_mgr
-      fatori_fault_mgr #(
-         .RESET_ON_MAJOR              (`FTM_RESET_ON_MAJOR),
-         .WAIT_CORE_SLEEP_BEFORE_RESET(`FTM_WAIT_SLEEP_BEFORE_RESET)
-      ) u_fault_mgr (
-         .clk_i            (clk_i),          // same clock as ibex_top
-         .rst_ni           (cpu_reset_neg),       // active-low reset
-
-         // fault inputs from ibex_top
-         .alert_minor_i           (alert_minor),
-         .alert_major_internal_i  (alert_major_internal),
-         .alert_major_bus_i       (alert_major_bus),
-         .double_fault_seen_i     (double_fault_seen),
-
-         // status inputs from ibex_top
-         .core_sleep_i     (core_sleep),
-         .crash_dump_i     (crash_dump),
-
-         // control out to ibex_top and SoC
-         .fetch_enable_o   (fetch_enable_core),
-         .core_reset_req_o (core_reset_req),
-
-         // optional SW/SoC observability (tie off if unused)
-         .fault_sticky_o   (/* unused */),
-         .minor_seen_o     (/* unused */),
-         .minor_cnt_o      (/* unused */),
-         .major_cnt_o      (/* unused */)
-      );
-   end else begin : g_no_fault_mgr
-      // No manager: keep core enabled, no reset request
-      assign fetch_enable_core = IbexMuBiOn;
-      assign core_reset_req    = 1'b0;
-   end
-   endgenerate
+   // No manager: keep core enabled, no reset request
+   assign fetch_enable_core = IbexMuBiOn;
+   assign core_reset_req    = 1'b0;
 
    assign instr_addr_o          = instr_addr_int[31:2];
    assign data_addr_o           = data_addr_int[31:2];

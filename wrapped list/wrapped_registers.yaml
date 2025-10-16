@@ -1,3 +1,31 @@
+# ----------------------------------------------------------------
+# 1) Register List JSON (--json) [wrapped_registers.json]
+# * Mandatory
+# ----------------------------------------------------------------
+#  States which registers exist in the architecture.
+#  Registers can be:
+#   - Simple strings
+#   - Objects with "name", optional "indexes", and optional "disable"
+#
+# Example:
+#
+# {
+#   "ibex_csr.sv": [
+#     "shadow",
+#     { "name": "mstatus", 
+#       "disable": "dis_flag"},
+#     { "name": "irq",
+#       "indexes": [ {"default_min": 0, "default_max": 3},
+#                    {"default_min": 0, "default_max": 1} ] 
+#     } 
+#   ],
+#   "ibex_decoder.sv": [ "opcode" ]
+# }
+#
+# This enables: {shadow, mstatus, irq_0_0..irq_3_0..irq_0_1..irq_3_1}
+# from ibex_csr.sv;
+# and {opcode} from ibex_decoder.sv
+
 {
   "ibex_controller.sv": [
     "mem_resp_intg_err_irq_pending_q",
@@ -384,17 +412,6 @@
       "name": "dummy_instr_wb",
       "disable":"dis_DummyInstructions"
     }
-  ],
-  
-  "ibex_fault_mgr.sv":[
-    "minor_cnt_o",
-    "major_cnt_o",
-    "minor_seen_o",
-    "fault_sticky_o",
-    "fetch_en_q",
-    "state_q"
   ]
-
-
 
 }

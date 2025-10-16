@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 `include "iob_reg_re_conf.vh"
 
-module iob_reg_re #(
+module iob_reg_ibex #(
    parameter DATA_W  = `IOB_REG_RE_DATA_W,
    parameter RST_VAL = `IOB_REG_RE_RST_VAL
 ) (
@@ -41,11 +41,6 @@ module iob_reg_re #(
       // data_o port
       .data_o(data_o)
    );
-
-
-
-
-   //assign data_int = en_i ? data_i : data_o;
 
 
 
