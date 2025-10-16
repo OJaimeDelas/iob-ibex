@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
-`include "fatori_tmr_config.svh"
 
 module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ID_W         = `IOB_IBEX_AXI_ID_W,
@@ -261,14 +260,6 @@ module iob_ibex import ibex_pkg::*; #(
    );
 
 
-
-   // ---- Ibex alert/status wires
-   logic        alert_minor;
-   logic        alert_major_internal;
-   logic        alert_major_bus;
-   logic        double_fault_seen;
-   logic        core_sleep;
-   crash_dump_t crash_dump;
 
    // ---- Fetch-enable (multi-bit) and optional reset request
    ibex_mubi_t  fetch_enable_core;

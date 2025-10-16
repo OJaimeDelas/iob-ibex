@@ -187,7 +187,7 @@ module ibex_load_store_unit #(
   /////////////////////
 
   // register for unaligned rdata
-  `IOB_REG_TMR(24, '0, '0, !rst_ni, rdata_update, data_rdata_i[31:8], rdata_q, rdata)
+  `IOB_REG_IBEX(24, '0, '0, !rst_ni, rdata_update, data_rdata_i[31:8], rdata_q, rdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_q <= '0;
@@ -197,10 +197,10 @@ module ibex_load_store_unit #(
   // end
 
   // registers for transaction control
-  `IOB_REG_TMR(2, '0, '0, !rst_ni, ctrl_update, data_offset, rdata_offset_q, rdata_offset)
-  `IOB_REG_TMR(2, '0, '0, !rst_ni, ctrl_update, lsu_type_i, data_type_q, data_type)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ctrl_update, lsu_sign_ext_i, data_sign_ext_q, data_sign_ext)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ctrl_update, lsu_we_i, data_we_q, data_we)
+  `IOB_REG_IBEX(2, '0, '0, !rst_ni, ctrl_update, data_offset, rdata_offset_q, rdata_offset)
+  `IOB_REG_IBEX(2, '0, '0, !rst_ni, ctrl_update, lsu_type_i, data_type_q, data_type)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, ctrl_update, lsu_sign_ext_i, data_sign_ext_q, data_sign_ext)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, ctrl_update, lsu_we_i, data_we_q, data_we)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_offset_q  <= 2'h0;
@@ -221,7 +221,7 @@ module ibex_load_store_unit #(
   // a misaligned access provide the word aligned address of the second half.
   assign addr_last_d = addr_incr_req_o ? data_addr_w_aligned : data_addr;
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, addr_update, addr_last_d, addr_last_q, addr_last)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, addr_update, addr_last_d, addr_last_q, addr_last)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     addr_last_q <= '0;
@@ -494,10 +494,10 @@ module ibex_load_store_unit #(
 
   // registers for FSM
   
-  `IOB_REG_TMR_ENUM(ls_fsm_e, IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, ls_fsm_cs)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, handle_misaligned_d, handle_misaligned_q, handle_misaligned)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, pmp_err_d, pmp_err_q, pmp_err)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, lsu_err_d, lsu_err_q, lsu_err)
+  `IOB_REG_IBEX_ENUM(ls_fsm_e, IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, ls_fsm_cs)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, handle_misaligned_d, handle_misaligned_q, handle_misaligned)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, pmp_err_d, pmp_err_q, pmp_err)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, lsu_err_d, lsu_err_q, lsu_err)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     ls_fsm_cs           <= IDLE;
@@ -592,8 +592,8 @@ module ibex_load_store_unit #(
                                 fcov_mis_rvalid_1 && data_bus_err_i ? 1'b1                 : // set
                                                                       fcov_mis_bus_err_1_q ;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, fcov_mis_2_en_d, fcov_mis_2_en_q, fcov_mis_2_en)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, fcov_mis_bus_err_1_d, fcov_mis_bus_err_1_q, fcov_mis_bus_err_1)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, fcov_mis_2_en_d, fcov_mis_2_en_q, fcov_mis_2_en)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, fcov_mis_bus_err_1_d, fcov_mis_bus_err_1_q, fcov_mis_bus_err_1)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     fcov_mis_2_en_q <= 1'b0;

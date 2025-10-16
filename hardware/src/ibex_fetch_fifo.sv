@@ -150,9 +150,9 @@ module ibex_fetch_fifo #(
                                   instr_addr_next;
 
   if (ResetAll) begin : g_instr_addr_ra
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr)
+    `IOB_REG_IBEX(32, '0, '0, !rst_ni, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr)
   end else begin : g_instr_addr_nr
-    `IOB_REG_TMR(32, '0, '0, '0, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr_no_rst)
+    `IOB_REG_IBEX(32, '0, '0, '0, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr_no_rst)
   end
   // if (ResetAll) begin : g_instr_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -229,7 +229,7 @@ module ibex_fetch_fifo #(
   ////////////////////
   // FIFO registers //
   ////////////////////
-  `IOB_REG_TMR(DEPTH, '0, '0, !rst_ni, '1, valid_d, valid_q, valid)
+  `IOB_REG_IBEX(DEPTH, '0, '0, !rst_ni, '1, valid_d, valid_q, valid)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -241,16 +241,16 @@ module ibex_fetch_fifo #(
 
 
 
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], rdata_d[0], rdata_q[0], rdata_0)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], err_d[0], err_q[0], err_0)
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], rdata_d[1], rdata_q[1], rdata_1)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], err_d[1], err_q[1], err_1)
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], rdata_d[2], rdata_q[2], rdata_2)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], err_d[2], err_q[2], err_2)
+  `IOB_REG_IBEX(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], rdata_d[0], rdata_q[0], rdata_0)
+  `IOB_REG_IBEX(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], err_d[0], err_q[0], err_0)
+  `IOB_REG_IBEX(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], rdata_d[1], rdata_q[1], rdata_1)
+  `IOB_REG_IBEX(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], err_d[1], err_q[1], err_1)
+  `IOB_REG_IBEX(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], rdata_d[2], rdata_q[2], rdata_2)
+  `IOB_REG_IBEX(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], err_d[2], err_q[2], err_2)
 
   // for (genvar i = 0; i < DEPTH; i++) begin : g_fifo_regs
-  // `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], rdata_d[i], rdata_q[i], rdata_``i)
-  // `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], err_d[i], err_q[i], err_``i)
+  // `IOB_REG_IBEX(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], rdata_d[i], rdata_q[i], rdata_``i)
+  // `IOB_REG_IBEX(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], err_d[i], err_q[i], err_``i)
   //   // if (ResetAll) begin : g_rdata_ra
   //   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //   //     if (!rst_ni) begin

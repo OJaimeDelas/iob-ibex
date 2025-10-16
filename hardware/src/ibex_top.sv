@@ -228,7 +228,7 @@ module ibex_top import ibex_pkg::*; #(
     // For non secure Ibex only the bottom bit of core_busy_q is considered. Other FFs can be
     // optimized away during synthesis.
 
-    `IOB_REG_TMR(4, IbexMuBiOff, '0, !rst_ni, 1'b1, core_busy_d, core_busy_q, core_busy)
+    `IOB_REG_IBEX(4, IbexMuBiOff, '0, !rst_ni, 1'b1, core_busy_d, core_busy_q, core_busy)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     core_busy_q <= IbexMuBiOff;
@@ -521,11 +521,11 @@ module ibex_top import ibex_pkg::*; #(
                                   ic_scr_key_req ? 1'b0                 :
                                                    scramble_key_valid_q;
 
-    `IOB_REG_TMR(SCRAMBLE_KEY_W, RndCnstIbexKey, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, scramble_key_q, scramble_key)
-    `IOB_REG_TMR(SCRAMBLE_NONCE_W, RndCnstIbexNonce, '0, !rst_ni, scramble_key_valid_i, scramble_nonce_i, scramble_nonce_q, scramble_nonce)
+    `IOB_REG_IBEX(SCRAMBLE_KEY_W, RndCnstIbexKey, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, scramble_key_q, scramble_key)
+    `IOB_REG_IBEX(SCRAMBLE_NONCE_W, RndCnstIbexNonce, '0, !rst_ni, scramble_key_valid_i, scramble_nonce_i, scramble_nonce_q, scramble_nonce)
 
-    `IOB_REG_TMR(1, '1, '0, !rst_ni, '1, scramble_key_valid_d, scramble_key_valid_q, scramble_key_valid)
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, scramble_req_d, scramble_req_q, scramble_req)
+    `IOB_REG_IBEX(1, '1, '0, !rst_ni, '1, scramble_key_valid_d, scramble_key_valid_q, scramble_key_valid)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, scramble_req_d, scramble_req_q, scramble_req)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     scramble_key_q       <= RndCnstIbexKey;
@@ -658,7 +658,7 @@ module ibex_top import ibex_pkg::*; #(
           // redundant with the sampling performed in the actual design, but that is okay because
           // the assertions exist to check the correct functioning of the design.
           logic [SCRAMBLE_KEY_W-1:0] sampled_scramble_key;
-          `IOB_REG_TMR(SCRAMBLE_KEY_W, 'x, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, sampled_scramble_key, sampled_scramble_key)
+          `IOB_REG_IBEX(SCRAMBLE_KEY_W, 'x, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, sampled_scramble_key, sampled_scramble_key)
           // always_ff @(posedge clk_i, negedge rst_ni) begin
           //   if (!rst_ni) begin
           //     sampled_scramble_key <= 'x;
@@ -1175,9 +1175,9 @@ module ibex_top import ibex_pkg::*; #(
     pending_access_t pending_dside_accesses_d[MaxOutstandingDSideAccesses];
     pending_access_t pending_dside_accesses_shifted[MaxOutstandingDSideAccesses];
 
-    // Manually instantiate the IOB_REG_TMR macros
-    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[0], pending_dside_accesses_q[0], pending_dside_accesses_0)
-    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[1], pending_dside_accesses_q[1], pending_dside_accesses_1)
+    // Manually instantiate the IOB_REG_IBEX macros
+    `IOB_REG_IBEX(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[0], pending_dside_accesses_q[0], pending_dside_accesses_0)
+    `IOB_REG_IBEX(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[1], pending_dside_accesses_q[1], pending_dside_accesses_1)
 
 
     for (genvar i = 0; i < MaxOutstandingDSideAccesses; i++) begin : g_dside_tracker

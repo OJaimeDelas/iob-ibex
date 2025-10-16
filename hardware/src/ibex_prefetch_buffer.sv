@@ -147,7 +147,7 @@ module ibex_prefetch_buffer #(
   assign stored_addr_d = instr_addr;
 
   // CPU resets with a branch, so no need to reset these addresses
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, stored_addr_en, stored_addr_d, stored_addr_q, stored_addr)
+  `IOB_REG_IBEX(32, '0, '0, ResetAll ? !rst_ni : '0, stored_addr_en, stored_addr_d, stored_addr_q, stored_addr)
   // if (ResetAll) begin : g_stored_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //     if (!rst_ni) begin
@@ -172,7 +172,7 @@ module ibex_prefetch_buffer #(
                         // Current address + 4
                         {{29{1'b0}},(valid_new_req & ~valid_req_q),2'b00};
 
-  `IOB_REG_TMR($bits(fetch_addr_q), '0, '0, (ResetAll ? !rst_ni : '0), fetch_addr_en, fetch_addr_d, fetch_addr_q, fetch_addr)
+  `IOB_REG_IBEX($bits(fetch_addr_q), '0, '0, (ResetAll ? !rst_ni : '0), fetch_addr_en, fetch_addr_d, fetch_addr_q, fetch_addr)
   // if (ResetAll) begin : g_fetch_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //     if (!rst_ni) begin
@@ -242,10 +242,10 @@ module ibex_prefetch_buffer #(
   // Registers //
   ///////////////
 
-  `IOB_REG_TMR($bits(valid_req_q),         '0, '0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         valid_req)
-  `IOB_REG_TMR($bits(discard_req_q),       '0, '0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       discard_req)
-  `IOB_REG_TMR($bits(rdata_outstanding_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, rdata_outstanding)
-  `IOB_REG_TMR($bits(branch_discard_q),    '0, '0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    branch_discard)
+  `IOB_REG_IBEX($bits(valid_req_q),         '0, '0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         valid_req)
+  `IOB_REG_IBEX($bits(discard_req_q),       '0, '0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       discard_req)
+  `IOB_REG_IBEX($bits(rdata_outstanding_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, rdata_outstanding)
+  `IOB_REG_IBEX($bits(branch_discard_q),    '0, '0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    branch_discard)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin

@@ -6,8 +6,6 @@
 //  - Provides default clk and rst options to simplify code
 //  - Provides boiler plate template for common assertions
 
-//FATORI-V Content
-//  - A TMR Register Macro was added here because this file was included in most files
 
 `ifndef PRIM_ASSERT_SV
 `define PRIM_ASSERT_SV

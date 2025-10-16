@@ -247,14 +247,14 @@ module ibex_lockstep import ibex_pkg::*; #(
 
   // Delay the inputs
   // stage 0 <= stage 1
-  `IOB_REG_TMR($bits(shadow_inputs_q[0]),     $bits(shadow_inputs_q[0])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_q[1],     shadow_inputs_q[0],     shadow_inputs_0)
-  //`IOB_REG_TMR($bits(shadow_tag_rdata_q[0]),  $bits(shadow_tag_rdata_q[0])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, shadow_tag_rdata_q[1],  shadow_tag_rdata_q[0],  shadow_tag_rdata_0)
-  //`IOB_REG_TMR($bits(shadow_data_rdata_q[0]), $bits(shadow_data_rdata_q[0])'('0), '0, (ResetAll ? !rst_ni : '0), '1, shadow_data_rdata_q[1], shadow_data_rdata_q[0], shadow_data_rdata_0)
+  `IOB_REG_IBEX($bits(shadow_inputs_q[0]),     $bits(shadow_inputs_q[0])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_q[1],     shadow_inputs_q[0],     shadow_inputs_0)
+  //`IOB_REG_IBEX($bits(shadow_tag_rdata_q[0]),  $bits(shadow_tag_rdata_q[0])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, shadow_tag_rdata_q[1],  shadow_tag_rdata_q[0],  shadow_tag_rdata_0)
+  //`IOB_REG_IBEX($bits(shadow_data_rdata_q[0]), $bits(shadow_data_rdata_q[0])'('0), '0, (ResetAll ? !rst_ni : '0), '1, shadow_data_rdata_q[1], shadow_data_rdata_q[0], shadow_data_rdata_0)
 
   // stage 1 <= inputs
-  `IOB_REG_TMR($bits(shadow_inputs_q[1]),     $bits(shadow_inputs_q[1])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_in,       shadow_inputs_q[1],     shadow_inputs_1)
-  //`IOB_REG_TMR($bits(shadow_tag_rdata_q[1]),  $bits(shadow_tag_rdata_q[1])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, ic_tag_rdata_i,         shadow_tag_rdata_q[1],  shadow_tag_rdata_1)
-  //`IOB_REG_TMR($bits(shadow_data_rdata_q[1]), $bits(shadow_data_rdata_q[1])'('0), '0, (ResetAll ? !rst_ni : '0), '1, ic_data_rdata_i,        shadow_data_rdata_q[1], shadow_data_rdata_1)
+  `IOB_REG_IBEX($bits(shadow_inputs_q[1]),     $bits(shadow_inputs_q[1])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_in,       shadow_inputs_q[1],     shadow_inputs_1)
+  //`IOB_REG_IBEX($bits(shadow_tag_rdata_q[1]),  $bits(shadow_tag_rdata_q[1])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, ic_tag_rdata_i,         shadow_tag_rdata_q[1],  shadow_tag_rdata_1)
+  //`IOB_REG_IBEX($bits(shadow_data_rdata_q[1]), $bits(shadow_data_rdata_q[1])'('0), '0, (ResetAll ? !rst_ni : '0), '1, ic_data_rdata_i,        shadow_data_rdata_q[1], shadow_data_rdata_1)
 
   // Flatten types (packed aliases for each array slice)
   typedef logic [$bits(shadow_tag_rdata_q[0]) - 1:0]  shadow_tag_vec_t;
@@ -273,10 +273,10 @@ module ibex_lockstep import ibex_pkg::*; #(
   end
 
   // One-liner regs 
-  `IOB_REG_TMR($bits(sh_tag0_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag0_d,   sh_tag0_q,   shadow_tag_rdata_0)
-  `IOB_REG_TMR($bits(sh_data0_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data0_d,  sh_data0_q,  shadow_data_rdata_0)
-  `IOB_REG_TMR($bits(sh_tag1_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag1_d,   sh_tag1_q,   shadow_tag_rdata_1)
-  `IOB_REG_TMR($bits(sh_data1_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data1_d,  sh_data1_q,  shadow_data_rdata_1)
+  `IOB_REG_IBEX($bits(sh_tag0_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag0_d,   sh_tag0_q,   shadow_tag_rdata_0)
+  `IOB_REG_IBEX($bits(sh_data0_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data0_d,  sh_data0_q,  shadow_data_rdata_0)
+  `IOB_REG_IBEX($bits(sh_tag1_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag1_d,   sh_tag1_q,   shadow_tag_rdata_1)
+  `IOB_REG_IBEX($bits(sh_data1_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data1_d,  sh_data1_q,  shadow_data_rdata_1)
 
   // Unpack reg outputs back into the original array shapes
   always_comb begin

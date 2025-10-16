@@ -399,11 +399,11 @@ module ibex_id_stage #(
   // Multicycle Operation Stage Register //
   /////////////////////////////////////////
 
-  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[0], imd_val_d_ex_i[0], imd_val_q[0], imd_val_q_reg_0)
-  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[1], imd_val_d_ex_i[1], imd_val_q[1], imd_val_q_reg_1)
+  `IOB_REG_IBEX(34, '0, '0, !rst_ni, imd_val_we_ex_i[0], imd_val_d_ex_i[0], imd_val_q[0], imd_val_q_reg_0)
+  `IOB_REG_IBEX(34, '0, '0, !rst_ni, imd_val_we_ex_i[1], imd_val_d_ex_i[1], imd_val_q[1], imd_val_q_reg_1)
 
   // for (genvar i = 0; i < 2; i++) begin : gen_intermediate_val_reg
-  //   `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[i], imd_val_d_ex_i[i], imd_val_q[i], imd_val_q_reg_``i)
+  //   `IOB_REG_IBEX(34, '0, '0, !rst_ni, imd_val_we_ex_i[i], imd_val_d_ex_i[i], imd_val_q[i], imd_val_q_reg_``i)
   //   // always_ff @(posedge clk_i or negedge rst_ni) begin : intermediate_val_reg
   //   //   if (!rst_ni) begin
   //   //     imd_val_q[i] <= '0;
@@ -697,7 +697,7 @@ module ibex_id_stage #(
     // (condition pass/fail used next cycle where branch target is calculated)
     logic branch_set_raw_q;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_set_raw_d, branch_set_raw_q, branch_set_raw)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, branch_set_raw_d, branch_set_raw_q, branch_set_raw)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -719,7 +719,7 @@ module ibex_id_stage #(
   assign branch_jump_set_done_d = (branch_set_raw | jump_set_raw | branch_jump_set_done_q) &
     ~instr_valid_clear_o;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_jump_set_done_d, branch_jump_set_done_q, branch_jump_set_done)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, branch_jump_set_done_d, branch_jump_set_done_q, branch_jump_set_done)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -745,7 +745,7 @@ module ibex_id_stage #(
     // SEC_CM: CORE.DATA_REG_SW.SCA
     logic branch_taken_q;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_decision_i, branch_taken_q, branch_taken)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, branch_decision_i, branch_taken_q, branch_taken)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -788,7 +788,7 @@ module ibex_id_stage #(
   typedef enum logic { FIRST_CYCLE, MULTI_CYCLE } id_fsm_e;
   id_fsm_e id_fsm_q, id_fsm_d;
 
-  `IOB_REG_TMR_ENUM(id_fsm_e, FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, id_fsm_q)
+  `IOB_REG_IBEX_ENUM(id_fsm_e, FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, id_fsm_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin : id_pipeline_reg
   //   if (!rst_ni) begin

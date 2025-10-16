@@ -65,7 +65,7 @@ module ibex_dummy_instr import ibex_pkg::*; #(
 
   assign dummy_instr_seed_d = dummy_instr_seed_q ^ dummy_instr_seed_i;
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, dummy_instr_seed_en_i, dummy_instr_seed_d, dummy_instr_seed_q, dummy_instr_seed)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, dummy_instr_seed_en_i, dummy_instr_seed_d, dummy_instr_seed_q, dummy_instr_seed)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     dummy_instr_seed_q <= '0;
@@ -104,7 +104,7 @@ module ibex_dummy_instr import ibex_pkg::*; #(
   assign dummy_cnt_en        = dummy_instr_en_i & id_in_ready_i &
                                (fetch_valid_i | insert_dummy_instr);
 
-  `IOB_REG_TMR(TIMEOUT_CNT_W, '0, '0, !rst_ni, dummy_cnt_en, dummy_cnt_d, dummy_cnt_q, dummy_cnt)
+  `IOB_REG_IBEX(TIMEOUT_CNT_W, '0, '0, !rst_ni, dummy_cnt_en, dummy_cnt_d, dummy_cnt_q, dummy_cnt)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     dummy_cnt_q <= '0;

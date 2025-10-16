@@ -92,7 +92,7 @@ module ibex_wb_stage #(
     // Signal only relevant if wb_valid_q set
     assign wb_done = (wb_instr_type_q == WB_INSTR_OTHER) | lsu_resp_valid_i;
 
-    `IOB_REG_TMR($bits(wb_valid_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, wb_valid_d, wb_valid_q, wb_valid)
+    `IOB_REG_IBEX($bits(wb_valid_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, wb_valid_d, wb_valid_q, wb_valid)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -102,13 +102,13 @@ module ibex_wb_stage #(
     //   end
     // end
 
-    `IOB_REG_TMR($bits(rf_we_wb_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_we_id_i,              rf_we_wb_q,      rf_we_wb)
-    `IOB_REG_TMR($bits(rf_waddr_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_waddr_id_i,           rf_waddr_wb_q,   rf_waddr_wb)
-    `IOB_REG_TMR($bits(rf_wdata_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_wdata_id_i,           rf_wdata_wb_q,   rf_wdata_wb)
-    `IOB_REG_TMR_ENUM(wb_instr_type_e,   0,      (ResetAll ? !rst_ni : '0), en_wb_i, instr_type_wb_i,         wb_instr_type_q, wb_instr_type)
-    `IOB_REG_TMR($bits(wb_pc_q),         '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, pc_id_i,                 wb_pc_q,         wb_pc)
-    `IOB_REG_TMR($bits(wb_compressed_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_is_compressed_id_i, wb_compressed_q, wb_compressed)
-    `IOB_REG_TMR($bits(wb_count_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_perf_count_id_i,    wb_count_q,      wb_count)
+    `IOB_REG_IBEX($bits(rf_we_wb_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_we_id_i,              rf_we_wb_q,      rf_we_wb)
+    `IOB_REG_IBEX($bits(rf_waddr_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_waddr_id_i,           rf_waddr_wb_q,   rf_waddr_wb)
+    `IOB_REG_IBEX($bits(rf_wdata_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_wdata_id_i,           rf_wdata_wb_q,   rf_wdata_wb)
+    `IOB_REG_IBEX_ENUM(wb_instr_type_e,   0,      (ResetAll ? !rst_ni : '0), en_wb_i, instr_type_wb_i,         wb_instr_type_q, wb_instr_type)
+    `IOB_REG_IBEX($bits(wb_pc_q),         '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, pc_id_i,                 wb_pc_q,         wb_pc)
+    `IOB_REG_IBEX($bits(wb_compressed_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_is_compressed_id_i, wb_compressed_q, wb_compressed)
+    `IOB_REG_IBEX($bits(wb_count_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_perf_count_id_i,    wb_count_q,      wb_count)
 
     // if (ResetAll) begin : g_wb_regs_ra
     //   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -181,7 +181,7 @@ module ibex_wb_stage #(
     if (DummyInstructions) begin : g_dummy_instr_wb
       logic dummy_instr_wb_q;
 
-      `IOB_REG_TMR($bits(dummy_instr_wb_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, dummy_instr_id_i, dummy_instr_wb_q, dummy_instr_wb)
+      `IOB_REG_IBEX($bits(dummy_instr_wb_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, dummy_instr_id_i, dummy_instr_wb_q, dummy_instr_wb)
       // if (ResetAll) begin : g_dummy_instr_wb_regs_ra
       //   always_ff @(posedge clk_i or negedge rst_ni) begin
       //     if (!rst_ni) begin

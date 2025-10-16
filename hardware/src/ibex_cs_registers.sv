@@ -807,7 +807,7 @@ module ibex_cs_registers #(
   end
 
   // Update current priv level
-  `IOB_REG_TMR_ENUM(priv_lvl_e, PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, priv_lvl_q)
+  `IOB_REG_IBEX_ENUM(priv_lvl_e, PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, priv_lvl_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -1426,7 +1426,7 @@ module ibex_cs_registers #(
     assign mcountinhibit = mcountinhibit_q;
   end
 
-  `IOB_REG_TMR(MHPMCounterNum+3, '0, '0, !rst_ni, '1, mcountinhibit_d, mcountinhibit_q, mcountinhibit)
+  `IOB_REG_IBEX(MHPMCounterNum+3, '0, '0, !rst_ni, '1, mcountinhibit_d, mcountinhibit_q, mcountinhibit)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     mcountinhibit_q <= '0;

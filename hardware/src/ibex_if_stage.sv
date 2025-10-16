@@ -445,7 +445,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign stall_dummy_instr = insert_dummy_instr;
 
     // Register the dummy instruction indication into the ID stage
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, insert_dummy_instr, dummy_instr_id_o, dummy_instr_id)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, insert_dummy_instr, dummy_instr_id_o, dummy_instr_id)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     dummy_instr_id_o <= 1'b0;
@@ -482,8 +482,8 @@ module ibex_if_stage import ibex_pkg::*; #(
                             (instr_valid_id_q & ~instr_valid_clear_i);
   assign instr_new_id_d   = if_instr_valid & id_in_ready_i;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_valid_id_d, instr_valid_id_q, instr_valid_id_q_reg)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_new_id_d,   instr_new_id_q,   instr_new_id_q_reg)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, instr_valid_id_d, instr_valid_id_q, instr_valid_id_q_reg)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, instr_new_id_d,   instr_new_id_q,   instr_new_id_q_reg)
 
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -508,15 +508,15 @@ module ibex_if_stage import ibex_pkg::*; #(
   if (ResetAll) begin : g_instr_rdata_ra
 
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id)
   // To reduce fan-out and help timing from the instr_rdata_id flops they are replicated.
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2)
-  `IOB_REG_TMR(16, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2)
+  `IOB_REG_IBEX(16, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -542,15 +542,15 @@ module ibex_if_stage import ibex_pkg::*; #(
     // end
   end else begin : g_instr_rdata_nr
 
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id_no_rst)
+    `IOB_REG_IBEX(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id_no_rst)
     // To reduce fan-out and help timing from the instr_rdata_id flops they are replicated.
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2_no_rst)
-    `IOB_REG_TMR(16, '0, '0, '0, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id_no_rst)
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
+    `IOB_REG_IBEX(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id_no_rst)
+    `IOB_REG_IBEX(1,  '0, '0, '0, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err_no_rst)
+    `IOB_REG_IBEX(1,  '0, '0, '0, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2_no_rst)
+    `IOB_REG_IBEX(16, '0, '0, '0, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
+    `IOB_REG_IBEX(1,  '0, '0, '0, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id_no_rst)
+    `IOB_REG_IBEX(1,  '0, '0, '0, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id_no_rst)
+    `IOB_REG_IBEX(32, '0, '0, '0, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
 
 
     // always_ff @(posedge clk_i) begin
@@ -579,7 +579,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign prev_instr_seq_d = (prev_instr_seq_q | instr_new_id_d) &
         ~branch_req & ~if_instr_err & ~stall_dummy_instr;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, prev_instr_seq_d, prev_instr_seq_q, prev_instr_seq)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, prev_instr_seq_d, prev_instr_seq_q, prev_instr_seq)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     prev_instr_seq_q <= 1'b0;
@@ -615,9 +615,9 @@ module ibex_if_stage import ibex_pkg::*; #(
 
     // ID stages needs to know if branch was predicted taken so it can signal mispredicts
     if (ResetAll) begin : g_bp_taken_ra
-        `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken)
+        `IOB_REG_IBEX(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken)
     end else begin : g_bp_taken_nr
-        `IOB_REG_TMR(1, '0, '0, '0, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken_no_rst)
+        `IOB_REG_IBEX(1, '0, '0, '0, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken_no_rst)
     end
 
     // if (ResetAll) begin : g_bp_taken_ra
@@ -649,7 +649,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign instr_skid_valid_d = (instr_skid_valid_q & ~id_in_ready_i & ~stall_dummy_instr) |
                                 instr_skid_en;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_skid_valid_d, instr_skid_valid_q, instr_skid_valid_q)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, instr_skid_valid_d, instr_skid_valid_q, instr_skid_valid_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     instr_skid_valid_q <= 1'b0;
@@ -659,13 +659,13 @@ module ibex_if_stage import ibex_pkg::*; #(
     // end
 
     if (ResetAll) begin : g_instr_skid_ra
-      `IOB_REG_TMR(1, '0, '0, !rst_ni, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q)
-      `IOB_REG_TMR(MemDataWidth, '0, '0, !rst_ni, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q)
-      `IOB_REG_TMR(32, '0, '0, !rst_ni, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q)
+      `IOB_REG_IBEX(1, '0, '0, !rst_ni, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q)
+      `IOB_REG_IBEX(MemDataWidth, '0, '0, !rst_ni, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q)
+      `IOB_REG_IBEX(32, '0, '0, !rst_ni, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q)
     end else begin : g_instr_skid_nr
-      `IOB_REG_TMR(1, '0, '0, '0, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q_no_rst)
-      `IOB_REG_TMR(MemDataWidth, '0, '0, '0, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q_no_rst)
-      `IOB_REG_TMR(32, '0, '0, '0, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q_no_rst)
+      `IOB_REG_IBEX(1, '0, '0, '0, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q_no_rst)
+      `IOB_REG_IBEX(MemDataWidth, '0, '0, '0, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q_no_rst)
+      `IOB_REG_IBEX(32, '0, '0, '0, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q_no_rst)
     end
 
     // if (ResetAll) begin : g_instr_skid_ra

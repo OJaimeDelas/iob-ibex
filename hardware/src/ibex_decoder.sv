@@ -143,7 +143,7 @@ module ibex_decoder #(
 
   if (RV32B != RV32BNone) begin : gen_rs3_flop
     // the use of rs3 is known one cycle ahead.
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, use_rs3_d, use_rs3_q, use_rs3)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, use_rs3_d, use_rs3_q, use_rs3)
 
     // always_ff  @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin

@@ -69,12 +69,12 @@
 
 // Wrapper for usual wrapped registers
 // TMR_EN_i unused
-`define IOB_REG_IBEX(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \                                                                                                                  \
+`define IOB_REG_IBEX(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \
   localparam int PREFIX``_DW = $bits(DOUT);                                     \
   logic [PREFIX``_DW-1:0] PREFIX``_din_raw;                                     \
   logic [PREFIX``_DW-1:0] PREFIX``_dout_raw;                                    \
   assign PREFIX``_din_raw  = DIN;                                               \
-  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(RST_VAL_i))                   \
+  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(RST_VAL_i))                     \
   PREFIX``_reg_inst (                                                           \
     .clk_i     (clk_i),                                                         \
     .cke_i     (1'b1),                                                          \
@@ -96,8 +96,8 @@
   PREFIX``_raw_t PREFIX``_din_raw;                                                \
   PREFIX``_raw_t PREFIX``_dout_raw;                                               \
   localparam PREFIX``_raw_t PREFIX``_RST_RAW = PREFIX``_raw_t'(RST_ENUM);         \
-  assign PREFIX``_din_raw = PREFIX``_raw_t'(DIN_ENUM);                             \
-  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(PREFIX``_RST_RAW))              \
+  assign PREFIX``_din_raw = PREFIX``_raw_t'(DIN_ENUM);                            \
+  iob_reg_ibex #(.DATA_W(PREFIX``_DW), .RST_VAL(PREFIX``_RST_RAW))                \
   PREFIX``_reg_inst (                                                             \
     .clk_i     (clk_i),                                                           \
     .cke_i     (1'b1),                                                            \

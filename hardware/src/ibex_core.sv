@@ -1005,8 +1005,8 @@ module ibex_core import ibex_pkg::*; #(
   logic [31:0]   pc_at_fetch_disable;
   ibex_mubi_t    last_fetch_enable;
 
-`IOB_REG_TMR(IbexMuBiWidth, '0, '0, !rst_ni, 1'b1, fetch_enable_i, last_fetch_enable, last_fetch_enable)
-`IOB_REG_TMR(32, '0, '0, !rst_ni, (fetch_enable_i != IbexMuBiOn) && (last_fetch_enable == IbexMuBiOn), pc_id, pc_at_fetch_disable, pc_at_fetch_disable)
+`IOB_REG_IBEX(IbexMuBiWidth, '0, '0, !rst_ni, 1'b1, fetch_enable_i, last_fetch_enable, last_fetch_enable)
+`IOB_REG_IBEX(32, '0, '0, !rst_ni, (fetch_enable_i != IbexMuBiOn) && (last_fetch_enable == IbexMuBiOn), pc_id, pc_at_fetch_disable, pc_at_fetch_disable)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     pc_at_fetch_disable <= '0;
@@ -1397,7 +1397,7 @@ module ibex_core import ibex_pkg::*; #(
     // through the tracking pipeline
     assign rvfi_instr_new_wb = rvfi_instr_new_wb_q | (rvfi_stage_valid[0] & rvfi_stage_trap[0]);
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, 1'b1, rvfi_id_done, rvfi_instr_new_wb_q, rvfi_instr_new_wb_q)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, 1'b1, rvfi_id_done, rvfi_instr_new_wb_q, rvfi_instr_new_wb_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     rvfi_instr_new_wb_q <= 0;
@@ -1461,31 +1461,31 @@ module ibex_core import ibex_pkg::*; #(
   // When we already captured a trap, and there is upcoming nmi interrupt or
   // a debug request then recapture as nmi or debug request are supposed to
   // be serviced.
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
               (new_nmi & ~captured_nmi & ~captured_debug_req))),
               ~(if_stage_i.instr_valid_id_d), captured_valid, captured_valid)
 
-  `IOB_REG_TMR(18, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(18, '0, '0, !rst_ni, 
               (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
               (new_nmi & ~captured_nmi & ~captured_debug_req))),
               cs_registers_i.mip, captured_mip, captured_mip)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
               (new_nmi & ~captured_nmi & ~captured_debug_req))),
               irq_nm_i, captured_nmi, captured_nmi)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
               (new_nmi & ~captured_nmi & ~captured_debug_req))),
               id_stage_i.controller_i.irq_nm_int, captured_nmi_int, captured_nmi_int)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
               (new_nmi & ~captured_nmi & ~captured_debug_req))),
@@ -1496,7 +1496,7 @@ module ibex_core import ibex_pkg::*; #(
   // interrupt occurs before another interrupt or debug request but both occur before the first
   // instruction of the handler is executed and retired (where the cosim will see all the
   // interrupts and debug requests at once with no way to determine which occurred first).
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb &
               ~captured_valid),
               (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb & ~captured_valid),
@@ -1544,20 +1544,20 @@ module ibex_core import ibex_pkg::*; #(
   // logic we won't tell the DV environment about a trap that should have been taken. So if there's
   // no valid capture we grab the raw values of the irq/debug_req/nmi inputs whatever they are and
   // the DV environment will see if a trap should have been taken but wasn't.
-  `IOB_REG_TMR(18, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
+  `IOB_REG_IBEX(18, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
               (instr_valid_id | ~captured_valid) ? cs_registers_i.mip : captured_mip,
               rvfi_ext_stage_pre_mip[0], rvfi_ext_stage_pre_mip_0)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 
               ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
               (instr_valid_id | ~captured_valid) ? irq_nm_i : captured_nmi,
               rvfi_ext_stage_nmi[0], rvfi_ext_stage_nmi_0)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
               (instr_valid_id | ~captured_valid) ? id_stage_i.controller_i.irq_nm_int : captured_nmi_int,
               rvfi_ext_stage_nmi_int[0], rvfi_ext_stage_nmi_int_0)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
               (instr_valid_id | ~captured_valid) ? debug_req_i : captured_debug_req,
               rvfi_ext_stage_debug_req[0], rvfi_ext_stage_debug_req_0)
 
@@ -1586,7 +1586,7 @@ module ibex_core import ibex_pkg::*; #(
   // rvfi_irq_valid signals an interrupt event to the cosim. These should only occur when the RVFI
   // pipe is empty so just send it straigh through.
   for (genvar i = 0; i < RVFI_STAGES + 1; i = i + 1) begin : g_rvfi_irq_valid
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, (i == 0) ? rvfi_irq_valid : rvfi_ext_stage_irq_valid[i-1], rvfi_ext_stage_irq_valid[i], rvfi_ext_stage_irq_valid_``i)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, (i == 0) ? rvfi_irq_valid : rvfi_ext_stage_irq_valid[i-1], rvfi_ext_stage_irq_valid[i], rvfi_ext_stage_irq_valid_``i)
 
     // if (i == 0) begin : g_rvfi_irq_valid_first_stage
 
@@ -1615,147 +1615,147 @@ module ibex_core import ibex_pkg::*; #(
 for (genvar i = 0; i < RVFI_STAGES; i = i + 1) begin : g_rvfi_stages
   
   // Single register instances with conditional logic for inputs and enables
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? '0 : rvfi_stage_halt[i-1], 
                rvfi_stage_halt[i], rvfi_stage_halt_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_trap_id : (rvfi_stage_trap[i-1] | rvfi_trap_wb), 
                rvfi_stage_trap[i], rvfi_stage_trap_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_intr_d : rvfi_stage_intr[i-1], 
                rvfi_stage_intr[i], rvfi_stage_intr_reg_``i)
                
-  `IOB_REG_TMR(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_stage_order_d : rvfi_stage_order[i-1], 
                rvfi_stage_order[i], rvfi_stage_order_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_insn_id : rvfi_stage_insn[i-1], 
                rvfi_stage_insn[i], rvfi_stage_insn_reg_``i)
                
-  `IOB_REG_TMR(2,  {PRIV_LVL_M}, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(2,  {PRIV_LVL_M}, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? {priv_mode_id} : rvfi_stage_mode[i-1], 
                rvfi_stage_mode[i], rvfi_stage_mode_reg_``i)
                
-  `IOB_REG_TMR(2,  CSR_MISA_MXL, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(2,  CSR_MISA_MXL, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? CSR_MISA_MXL : rvfi_stage_ixl[i-1], 
                rvfi_stage_ixl[i], rvfi_stage_ixl_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs1_addr_d : rvfi_stage_rs1_addr[i-1], 
                rvfi_stage_rs1_addr[i], rvfi_stage_rs1_addr_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs2_addr_d : rvfi_stage_rs2_addr[i-1], 
                rvfi_stage_rs2_addr[i], rvfi_stage_rs2_addr_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs3_addr_d : rvfi_stage_rs3_addr[i-1], 
                rvfi_stage_rs3_addr[i], rvfi_stage_rs3_addr_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? pc_id : rvfi_stage_pc_rdata[i-1], 
                rvfi_stage_pc_rdata[i], rvfi_stage_pc_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? (pc_set ? branch_target_ex : pc_if) : rvfi_stage_pc_wdata[i-1], 
                rvfi_stage_pc_wdata[i], rvfi_stage_pc_wdata_reg_``i)
                
-  `IOB_REG_TMR(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_mem_mask_int : rvfi_stage_mem_rmask[i-1], 
                rvfi_stage_mem_rmask[i], rvfi_stage_mem_rmask_reg_``i)
                
-  `IOB_REG_TMR(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? (data_we_o ? rvfi_mem_mask_int : 4'b0000) : rvfi_stage_mem_wmask[i-1], 
                rvfi_stage_mem_wmask[i], rvfi_stage_mem_wmask_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs1_data_d : rvfi_stage_rs1_rdata[i-1], 
                rvfi_stage_rs1_rdata[i], rvfi_stage_rs1_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs2_data_d : rvfi_stage_rs2_rdata[i-1], 
                rvfi_stage_rs2_rdata[i], rvfi_stage_rs2_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_rs3_data_d : rvfi_stage_rs3_rdata[i-1], 
                rvfi_stage_rs3_rdata[i], rvfi_stage_rs3_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_mem_wdata_d : rvfi_stage_mem_wdata[i-1], 
                rvfi_stage_mem_wdata[i], rvfi_stage_mem_wdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? rvfi_mem_addr_d : rvfi_stage_mem_addr[i-1], 
                rvfi_stage_mem_addr[i], rvfi_stage_mem_addr_reg_``i)
   
   // Special case: these three signals always get fresh data in writeback stage (not shifted)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                rvfi_rd_addr_d, 
                rvfi_stage_rd_addr[i], rvfi_stage_rd_addr_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                rvfi_rd_wdata_d, 
                rvfi_stage_rd_wdata[i], rvfi_stage_rd_wdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                rvfi_mem_rdata_d, 
                rvfi_stage_mem_rdata[i], rvfi_stage_mem_rdata_reg_``i)
   
   // Extension signals
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? debug_mode : rvfi_ext_stage_debug_mode[i-1], 
                rvfi_ext_stage_debug_mode[i], rvfi_ext_stage_debug_mode_reg_``i)
                
-  `IOB_REG_TMR(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? cs_registers_i.mcycle_counter_i.counter_val_o : rvfi_ext_stage_mcycle[i-1], 
                rvfi_ext_stage_mcycle[i], rvfi_ext_stage_mcycle_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                (i == 0) ? cs_registers_i.cpuctrlsts_ic_scr_key_valid_q : rvfi_ext_stage_ic_scr_key_valid[i-1], 
                rvfi_ext_stage_ic_scr_key_valid[i], rvfi_ext_stage_ic_scr_key_valid_reg_``i)
   
   // HPM counters - need separate instances for each k
   for (genvar k = 0; k < 10; k = k + 1) begin : g_mhpmcounters
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+    `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                  (i == 0) ? cs_registers_i.mhpmcounter[k+3][31:0] : rvfi_ext_stage_mhpmcounters[i-1][k], 
                  rvfi_ext_stage_mhpmcounters[i][k], rvfi_ext_stage_mhpmcounters_reg_``i_``k)
                  
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
+    `IOB_REG_IBEX(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
                  (i == 0) ? cs_registers_i.mhpmcounter[k+3][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][k], 
                  rvfi_ext_stage_mhpmcountersh[i][k], rvfi_ext_stage_mhpmcountersh_reg_``i_``k)
   end
   
   // rvfi_stage_valid has its own logic independent of stage number
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 1'b1, rvfi_stage_valid_d[i], rvfi_stage_valid[i], rvfi_stage_valid_reg_``i)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, 1'b1, rvfi_stage_valid_d[i], rvfi_stage_valid[i], rvfi_stage_valid_reg_``i)
   
   // Some of the rvfi_ext_* signals are used to provide an interrupt notification (signalled
   // via rvfi_ext_irq_valid) when there isn't a valid retired instruction as well as
   // providing information along with a retired instruction. Move these up the rvfi pipeline
   // for both cases.
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, 
                (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
                rvfi_ext_stage_pre_mip[i], 
                rvfi_ext_stage_pre_mip[i+1], rvfi_ext_stage_pre_mip_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, 
                (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
                (i == 0) ? cs_registers_i.mip : rvfi_ext_stage_post_mip[i-1], 
                rvfi_ext_stage_post_mip[i], rvfi_ext_stage_post_mip_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, 
                (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
                rvfi_ext_stage_nmi[i], 
                rvfi_ext_stage_nmi[i+1], rvfi_ext_stage_nmi_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, 
                (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
                rvfi_ext_stage_nmi_int[i], 
                rvfi_ext_stage_nmi_int[i+1], rvfi_ext_stage_nmi_int_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
+  `IOB_REG_IBEX(1,  '0, '0, !rst_ni, 
                (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
                rvfi_ext_stage_debug_req[i], 
                rvfi_ext_stage_debug_req[i+1], rvfi_ext_stage_debug_req_reg_``i)
@@ -1922,9 +1922,9 @@ end
     end
   end
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_addr_d,  rvfi_mem_addr_q,  rvfi_mem_addr)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_rdata_d, rvfi_mem_rdata_q, rvfi_mem_rdata)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_wdata_d, rvfi_mem_wdata_q, rvfi_mem_wdata)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_mem_addr_d,  rvfi_mem_addr_q,  rvfi_mem_addr)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_mem_rdata_d, rvfi_mem_rdata_q, rvfi_mem_rdata)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_mem_wdata_d, rvfi_mem_wdata_q, rvfi_mem_wdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_mem_addr_q  <= '0;
@@ -1976,10 +1976,10 @@ end
   end
 
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rs1_data_d, rvfi_rs1_data_q, rvfi_rs1_data)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rs1_addr_d, rvfi_rs1_addr_q, rvfi_rs1_addr)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rs2_data_d, rvfi_rs2_data_q, rvfi_rs2_data)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rs2_addr_d, rvfi_rs2_addr_q, rvfi_rs2_addr)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_rs1_data_d, rvfi_rs1_data_q, rvfi_rs1_data)
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, '1, rvfi_rs1_addr_d, rvfi_rs1_addr_q, rvfi_rs1_addr)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_rs2_data_d, rvfi_rs2_data_q, rvfi_rs2_data)
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, '1, rvfi_rs2_addr_d, rvfi_rs2_addr_q, rvfi_rs2_addr)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_rs1_data_q <= '0;
@@ -2019,8 +2019,8 @@ end
 
   // RD write register is refreshed only once per cycle and
   // then it is kept stable for the cycle.
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rd_addr_d,  rvfi_rd_addr_q,  rvfi_rd_addr_q)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rd_wdata_d, rvfi_rd_wdata_q, rvfi_rd_wdata_q)
+  `IOB_REG_IBEX(5,  '0, '0, !rst_ni, '1, rvfi_rd_addr_d,  rvfi_rd_addr_q,  rvfi_rd_addr_q)
+  `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, rvfi_rd_wdata_d, rvfi_rd_wdata_q, rvfi_rd_wdata_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -2071,8 +2071,8 @@ end
     end
   end
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, rvfi_set_trap_pc_d, rvfi_set_trap_pc_q, rvfi_set_trap_pc)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, rvfi_intr_d,        rvfi_intr_q,        rvfi_intr)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, rvfi_set_trap_pc_d, rvfi_set_trap_pc_q, rvfi_set_trap_pc)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, rvfi_intr_d,        rvfi_intr_q,        rvfi_intr)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_set_trap_pc_q <= 1'b0;

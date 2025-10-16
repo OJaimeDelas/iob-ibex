@@ -24,7 +24,7 @@ module ibex_csr #(
 );
 
   logic [Width-1:0] rdata_q;
-  `IOB_REG_TMR(Width, ResetValue, '0, !rst_ni, wr_en_i, wr_data_i, rdata_q, rdata)
+  `IOB_REG_IBEX(Width, ResetValue, '0, !rst_ni, wr_en_i, wr_data_i, rdata_q, rdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_q <= ResetValue;
@@ -37,7 +37,7 @@ module ibex_csr #(
 
   if (ShadowCopy) begin : gen_shadow
     logic [Width-1:0] shadow_q;
-    `IOB_REG_TMR(Width, ~ResetValue, '0, !rst_ni, wr_en_i, ~wr_data_i, shadow_q, shadow)
+    `IOB_REG_IBEX(Width, ~ResetValue, '0, !rst_ni, wr_en_i, ~wr_data_i, shadow_q, shadow)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     shadow_q <= ~ResetValue;

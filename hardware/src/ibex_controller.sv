@@ -340,8 +340,8 @@ module ibex_controller #(
     assign mem_resp_intg_err_irq_pending_d =
       (mem_resp_intg_err_irq_pending_q & ~mem_resp_intg_err_irq_clear) | mem_resp_intg_err_irq_set;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, mem_resp_intg_err_irq_pending_d, mem_resp_intg_err_irq_pending_q, mem_resp_intg_err_irq_pending_q)
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, mem_resp_intg_err_addr_q)
+    `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, mem_resp_intg_err_irq_pending_d, mem_resp_intg_err_irq_pending_q, mem_resp_intg_err_irq_pending_q)
+    `IOB_REG_IBEX(32, '0, '0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, mem_resp_intg_err_addr_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     mem_resp_intg_err_irq_pending_q <= 1'b0;
@@ -438,7 +438,7 @@ module ibex_controller #(
                          do_single_step_d                   ? DBG_CAUSE_STEP    :
                                                               DBG_CAUSE_NONE ;
                                                               
-  `IOB_REG_TMR_ENUM(dbg_cause_e, DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, debug_cause_q)
+  `IOB_REG_IBEX_ENUM(dbg_cause_e, DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, debug_cause_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -876,15 +876,15 @@ module ibex_controller #(
 
   // update registers
 
-  `IOB_REG_TMR_ENUM(ctrl_fsm_e, RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, ctrl_fsm_cs)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, nmi_mode_d, nmi_mode_q, nmi_mode_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, do_single_step_d, do_single_step_q, do_single_step_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, debug_mode_d, debug_mode_q, debug_mode_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, enter_debug_mode_prio_d, enter_debug_mode_prio_q, enter_debug_mode_prio_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, load_err_d, load_err_q, load_err_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, store_err_d, store_err_q, store_err_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, exc_req_d, exc_req_q, exc_req_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, illegal_insn_d, illegal_insn_q, illegal_insn_q)
+  `IOB_REG_IBEX_ENUM(ctrl_fsm_e, RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, ctrl_fsm_cs)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, nmi_mode_d, nmi_mode_q, nmi_mode_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, do_single_step_d, do_single_step_q, do_single_step_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, debug_mode_d, debug_mode_q, debug_mode_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, enter_debug_mode_prio_d, enter_debug_mode_prio_q, enter_debug_mode_prio_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, load_err_d, load_err_q, load_err_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, store_err_d, store_err_q, store_err_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, exc_req_d, exc_req_q, exc_req_q)
+  `IOB_REG_IBEX(1, '0, '0, !rst_ni, '1, illegal_insn_d, illegal_insn_q, illegal_insn_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin : update_regs
   //   if (!rst_ni) begin
