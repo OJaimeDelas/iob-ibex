@@ -48,7 +48,7 @@ The framework will create the directory and populate it with files and folders a
 
 The Makefile is responsible to copy the remaining files. Some flags are used that allow the system to only copy a specific set of files (to avoid copying `hardware/src/` files again, or primitives that are deemed unnecessary).
 
-For example, `UNWANTED_FILES` allows the user to list files that will not be copied by the Makefile. By default, `ibex_top.sv` will be copied by the framework, not the Makefile, so it is listed there as an example.
+For example, `NO_GENERATE_FILES` allows the user to list files that will not be copied by the Makefile. By default, `ibex_top.sv` will be copied by the framework, not the Makefile, so it is listed there as an example.
 
 The `COPY_DIR` variable is also very important, as it states where should the files be copied to. If no other folder is given, it will create the `hardware/copy` directory and copy them into it.
 
