@@ -406,6 +406,24 @@ module iob_ibex import ibex_pkg::*; #(
    assign dbus_axi_araddr_o_int = {dbus_axi_araddr_o, 2'b0};
    assign dbus_axi_awaddr_o_int = {dbus_axi_awaddr_o, 2'b0};
 
+   // Connect unused CLINT interface to zero
+   assign clint_iob_rvalid_o = 1'b0;
+   assign clint_iob_rdata_o = 20'b0;
+   assign clint_iob_ready_o = 1'b0;
+   //clint_iob_valid_i,
+   //clint_iob_addr_i,
+   //clint_iob_wdata_i,
+   //clint_iob_wstrb_i
+
+   // Connect unused PLIC interface to zero
+   assign plic_iob_rvalid_o = 1'b0;
+   assign plic_iob_rdata_o = 14'b0;
+   assign plic_iob_ready_o = 1'b0;
+   //plic_iob_valid_i,
+   //plic_iob_addr_i,
+   //plic_iob_wdata_i,
+   //plic_iob_wstrb_i,
+
 
 
 
