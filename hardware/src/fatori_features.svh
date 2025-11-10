@@ -25,7 +25,7 @@
 `__FTM_DEF_IF_UNDEF(FTM_SECURE_GUARDS, 1)
 
 // Dual-core lockstep (shadow core + compare). Big area/power, strongest FI detect.
-`__FTM_DEF_IF_UNDEF(FTM_LOCKSTEP,              1)
+`__FTM_DEF_IF_UNDEF(FTM_LOCKSTEP,              0)
 
 // Data-independent timing: logic present; SW controls via cpuctrl.data_ind_timing.
 `__FTM_DEF_IF_UNDEF(FTM_DATA_INDEP_TIMING,     1)
