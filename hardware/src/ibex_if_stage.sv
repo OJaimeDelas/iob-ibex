@@ -116,7 +116,18 @@ module ibex_if_stage import ibex_pkg::*; #(
 
   // misc signals
   output logic                        pc_mismatch_alert_o,
-  output logic                        if_busy_o                 // IF stage is busy fetching instr
+  output logic                        if_busy_o,                // IF stage is busy fetching instr
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                        if_stage_new_maj_err_o,
+  output logic                        if_stage_new_min_err_o,
+  output logic                        if_stage_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   logic              instr_valid_id_d, instr_valid_id_q;
@@ -163,6 +174,14 @@ module ibex_if_stage import ibex_pkg::*; #(
   logic              instr_is_compressed_out;
   logic              illegal_c_instr_out;
   logic              instr_err_out;
+  
+  // Child module error aggregation signals
+  logic              prefetch_buffer_new_maj_err;
+  logic              prefetch_buffer_new_min_err;
+  logic              prefetch_buffer_scrub_occurred;
+  logic              dummy_instr_new_maj_err;
+  logic              dummy_instr_new_min_err;
+  logic              dummy_instr_scrub_occurred;
 
   logic              predict_branch_taken;
   logic       [31:0] predict_branch_pc;
@@ -310,10 +329,12 @@ module ibex_if_stage import ibex_pkg::*; #(
         .busy_o              ( prefetch_busy              ),
         .ecc_error_o         ( icache_ecc_error_o         )
     );
-  end else begin : gen_prefetch_buffer
+ end else begin : gen_prefetch_buffer
     // prefetch buffer, caches a fixed number of instructions
+    
+    `KEEP_PREFETCH_BUFFER
     ibex_prefetch_buffer #(
-      .ResetAll        (ResetAll)
+      .ResetAll        ( ResetAll        )
     ) prefetch_buffer_i (
         .clk_i               ( clk_i                      ),
         .rst_ni              ( rst_ni                     ),
@@ -337,7 +358,15 @@ module ibex_if_stage import ibex_pkg::*; #(
         .instr_rdata_i       ( instr_rdata_i[31:0]        ),
         .instr_err_i         ( instr_err                  ),
 
-        .busy_o              ( prefetch_busy              )
+        .busy_o              ( prefetch_busy              ),
+
+        .prefetch_buffer_new_maj_err_o ( prefetch_buffer_new_maj_err ),
+        .prefetch_buffer_new_min_err_o ( prefetch_buffer_new_min_err ),
+        .prefetch_buffer_scrub_occurred_o ( prefetch_buffer_scrub_occurred )
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
     // ICache tieoffs
     logic                   unused_icen, unused_icinv, unused_scr_key_valid;
@@ -416,7 +445,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     // SEC_CM: CTRL_FLOW.UNPREDICTABLE
     logic        insert_dummy_instr;
     logic [31:0] dummy_instr_data;
-
+    
     ibex_dummy_instr #(
       .RndCnstLfsrSeed (RndCnstLfsrSeed),
       .RndCnstLfsrPerm (RndCnstLfsrPerm)
@@ -430,7 +459,15 @@ module ibex_if_stage import ibex_pkg::*; #(
       .fetch_valid_i        (fetch_valid),
       .id_in_ready_i        (id_in_ready_i),
       .insert_dummy_instr_o (insert_dummy_instr),
-      .dummy_instr_data_o   (dummy_instr_data)
+      .dummy_instr_data_o   (dummy_instr_data),
+
+      .dummy_instr_new_maj_err_o ( dummy_instr_new_maj_err ),
+      .dummy_instr_new_min_err_o ( dummy_instr_new_min_err ),
+      .dummy_instr_scrub_occurred_o ( dummy_instr_scrub_occurred )
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
 
     // Mux between actual instructions and dummy instructions
@@ -445,7 +482,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign stall_dummy_instr = insert_dummy_instr;
 
     // Register the dummy instruction indication into the ID stage
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, insert_dummy_instr, dummy_instr_id_o, dummy_instr_id)
+    `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, insert_dummy_instr, dummy_instr_id_o, fi_port, 8'd99, '0, '0, dummy_instr_id)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     dummy_instr_id_o <= 1'b0;
@@ -482,8 +519,8 @@ module ibex_if_stage import ibex_pkg::*; #(
                             (instr_valid_id_q & ~instr_valid_clear_i);
   assign instr_new_id_d   = if_instr_valid & id_in_ready_i;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_valid_id_d, instr_valid_id_q, instr_valid_id_q_reg)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_new_id_d,   instr_new_id_q,   instr_new_id_q_reg)
+  `FATORI_REG('0, !rst_ni, '1, instr_valid_id_d, instr_valid_id_q, fi_port, 8'd100, '0, '0, instr_valid_id_q_reg)
+  `FATORI_REG('0, !rst_ni, '1, instr_new_id_d, instr_new_id_q, fi_port, 8'd101, '0, '0, instr_new_id_q_reg)
 
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -508,15 +545,15 @@ module ibex_if_stage import ibex_pkg::*; #(
   if (ResetAll) begin : g_instr_rdata_ra
 
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, fi_port, 8'd102, '0, '0, instr_rdata_id)
   // To reduce fan-out and help timing from the instr_rdata_id flops they are replicated.
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2)
-  `IOB_REG_TMR(16, '0, '0, !rst_ni, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, fi_port, 8'd103, '0, '0, instr_rdata_alu_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, fi_port, 8'd104, '0, '0, instr_fetch_err)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, fi_port, 8'd105, '0, '0, instr_fetch_err_plus2)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, fi_port, 8'd106, '0, '0, instr_rdata_c_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, fi_port, 8'd107, '0, '0, instr_is_compressed_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, fi_port, 8'd108, '0, '0, illegal_c_insn_id)
+  `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, pc_if_o, pc_id_o, fi_port, 8'd109, '0, '0, pc_id)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -542,15 +579,15 @@ module ibex_if_stage import ibex_pkg::*; #(
     // end
   end else begin : g_instr_rdata_nr
 
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, instr_rdata_id_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_id_o, fi_port, 8'd110, '0, '0, instr_rdata_id_no_rst)
     // To reduce fan-out and help timing from the instr_rdata_id flops they are replicated.
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, instr_rdata_alu_id_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, instr_fetch_err_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, instr_fetch_err_plus2_no_rst)
-    `IOB_REG_TMR(16, '0, '0, '0, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, instr_rdata_c_id)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, instr_is_compressed_id_no_rst)
-    `IOB_REG_TMR(1,  '0, '0, '0, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, illegal_c_insn_id_no_rst)
-    `IOB_REG_TMR(32, '0, '0, '0, if_id_pipe_reg_we, pc_if_o, pc_id_o, pc_id)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, instr_out, instr_rdata_alu_id_o, fi_port, 8'd111, '0, '0, instr_rdata_alu_id_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, instr_err_out, instr_fetch_err_o, fi_port, 8'd112, '0, '0, instr_fetch_err_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, if_instr_err_plus2, instr_fetch_err_plus2_o, fi_port, 8'd113, '0, '0, instr_fetch_err_plus2_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, if_instr_rdata[15:0], instr_rdata_c_id_o, fi_port, 8'd114, '0, '0, instr_rdata_c_id)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, instr_is_compressed_out, instr_is_compressed_id_o, fi_port, 8'd115, '0, '0, instr_is_compressed_id_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, illegal_c_instr_out, illegal_c_insn_id_o, fi_port, 8'd116, '0, '0, illegal_c_insn_id_no_rst)
+    `FATORI_REG('0, '0, if_id_pipe_reg_we, pc_if_o, pc_id_o, fi_port, 8'd117, '0, '0, pc_id)
 
 
     // always_ff @(posedge clk_i) begin
@@ -579,7 +616,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign prev_instr_seq_d = (prev_instr_seq_q | instr_new_id_d) &
         ~branch_req & ~if_instr_err & ~stall_dummy_instr;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, prev_instr_seq_d, prev_instr_seq_q, prev_instr_seq)
+    `FATORI_REG('0, !rst_ni, '1, prev_instr_seq_d, prev_instr_seq_q, fi_port, 8'd118, '0, '0, prev_instr_seq)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     prev_instr_seq_q <= 1'b0;
@@ -615,9 +652,9 @@ module ibex_if_stage import ibex_pkg::*; #(
 
     // ID stages needs to know if branch was predicted taken so it can signal mispredicts
     if (ResetAll) begin : g_bp_taken_ra
-        `IOB_REG_TMR(1, '0, '0, !rst_ni, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken)
+        `FATORI_REG('0, !rst_ni, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, fi_port, 8'd119, '0, '0, instr_bp_taken)
     end else begin : g_bp_taken_nr
-        `IOB_REG_TMR(1, '0, '0, '0, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, instr_bp_taken_no_rst)
+        `FATORI_REG('0, '0, if_id_pipe_reg_we, instr_bp_taken_d, instr_bp_taken_q, fi_port, 8'd120, '0, '0, instr_bp_taken_no_rst)
     end
 
     // if (ResetAll) begin : g_bp_taken_ra
@@ -649,7 +686,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     assign instr_skid_valid_d = (instr_skid_valid_q & ~id_in_ready_i & ~stall_dummy_instr) |
                                 instr_skid_en;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, instr_skid_valid_d, instr_skid_valid_q, instr_skid_valid_q)
+    `FATORI_REG('0, !rst_ni, '1, instr_skid_valid_d, instr_skid_valid_q, fi_port, 8'd121, '0, '0, instr_skid_valid_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     instr_skid_valid_q <= 1'b0;
@@ -659,13 +696,13 @@ module ibex_if_stage import ibex_pkg::*; #(
     // end
 
     if (ResetAll) begin : g_instr_skid_ra
-      `IOB_REG_TMR(1, '0, '0, !rst_ni, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q)
-      `IOB_REG_TMR(MemDataWidth, '0, '0, !rst_ni, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q)
-      `IOB_REG_TMR(32, '0, '0, !rst_ni, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q)
+      `FATORI_REG('0, !rst_ni, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, fi_port, 8'd122, '0, '0, instr_skid_bp_taken_q)
+      `FATORI_REG('0, !rst_ni, instr_skid_en, fetch_rdata, instr_skid_data_q, fi_port, 8'd123, '0, '0, instr_skid_data_q)
+      `FATORI_REG('0, !rst_ni, instr_skid_en, fetch_addr, instr_skid_addr_q, fi_port, 8'd124, '0, '0, instr_skid_addr_q)
     end else begin : g_instr_skid_nr
-      `IOB_REG_TMR(1, '0, '0, '0, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, instr_skid_bp_taken_q_no_rst)
-      `IOB_REG_TMR(MemDataWidth, '0, '0, '0, instr_skid_en, fetch_rdata, instr_skid_data_q, instr_skid_data_q_no_rst)
-      `IOB_REG_TMR(32, '0, '0, '0, instr_skid_en, fetch_addr, instr_skid_addr_q, instr_skid_addr_q_no_rst)
+      `FATORI_REG('0, '0, instr_skid_en, predict_branch_taken, instr_skid_bp_taken_q, fi_port, 8'd125, '0, '0, instr_skid_bp_taken_q_no_rst)
+      `FATORI_REG('0, '0, instr_skid_en, fetch_rdata, instr_skid_data_q, fi_port, 8'd126, '0, '0, instr_skid_data_q_no_rst)
+      `FATORI_REG('0, '0, instr_skid_en, fetch_addr, instr_skid_addr_q, fi_port, 8'd127, '0, '0, instr_skid_addr_q_no_rst)
     end
 
     // if (ResetAll) begin : g_instr_skid_ra
@@ -690,6 +727,7 @@ module ibex_if_stage import ibex_pkg::*; #(
     //   end
     // end
 
+    `KEEP_BRANCH_PREDICT
     ibex_branch_predict branch_predict_i (
       .clk_i        (clk_i),
       .rst_ni       (rst_ni),
@@ -861,5 +899,199 @@ module ibex_if_stage import ibex_pkg::*; #(
 
   // Address must be word aligned when request is sent.
   `ASSERT(IbexInstrAddrUnaligned, instr_req_o |-> (instr_addr_o[1:0] == 2'b00))
+
+// ============================================================
+  // Error Aggregation (OR own registers + child errors)
+  // ============================================================
+  generate
+    // Base signals that always exist
+    logic base_maj_err, base_min_err, base_scrub;
+    assign base_maj_err = instr_valid_id_q_reg_new_maj_err |
+                          instr_new_id_q_reg_new_maj_err |
+                          prefetch_buffer_new_maj_err;
+    assign base_min_err = instr_valid_id_q_reg_new_min_err |
+                          instr_new_id_q_reg_new_min_err |
+                          prefetch_buffer_new_min_err;
+    assign base_scrub = instr_valid_id_q_reg_scrub_occurred |
+                        instr_new_id_q_reg_scrub_occurred |
+                        prefetch_buffer_scrub_occurred;
+    
+    // Conditional signals based on ResetAll, BranchPredictor, PCIncrCheck, DummyInstructions
+    if (ResetAll && BranchPredictor && PCIncrCheck && DummyInstructions) begin : g_all_features
+      assign if_stage_new_maj_err_o = base_maj_err |
+                                       gen_dummy_instr.dummy_instr_id_new_maj_err |
+                                       g_instr_rdata_ra.instr_rdata_id_new_maj_err |
+                                       g_instr_rdata_ra.instr_rdata_alu_id_new_maj_err |
+                                       g_instr_rdata_ra.instr_fetch_err_new_maj_err |
+                                       g_instr_rdata_ra.instr_fetch_err_plus2_new_maj_err |
+                                       g_instr_rdata_ra.instr_rdata_c_id_new_maj_err |
+                                       g_instr_rdata_ra.instr_is_compressed_id_new_maj_err |
+                                       g_instr_rdata_ra.illegal_c_insn_id_new_maj_err |
+                                       g_instr_rdata_ra.pc_id_new_maj_err |
+                                       g_secure_pc.prev_instr_seq_new_maj_err |
+                                       g_branch_predictor.g_bp_taken_ra.instr_bp_taken_new_maj_err |
+                                       g_branch_predictor.instr_skid_valid_q_new_maj_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_new_maj_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_new_maj_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_new_maj_err |
+                                       dummy_instr_new_maj_err;
+      
+      assign if_stage_new_min_err_o = base_min_err |
+                                       gen_dummy_instr.dummy_instr_id_new_min_err |
+                                       g_instr_rdata_ra.instr_rdata_id_new_min_err |
+                                       g_instr_rdata_ra.instr_rdata_alu_id_new_min_err |
+                                       g_instr_rdata_ra.instr_fetch_err_new_min_err |
+                                       g_instr_rdata_ra.instr_fetch_err_plus2_new_min_err |
+                                       g_instr_rdata_ra.instr_rdata_c_id_new_min_err |
+                                       g_instr_rdata_ra.instr_is_compressed_id_new_min_err |
+                                       g_instr_rdata_ra.illegal_c_insn_id_new_min_err |
+                                       g_instr_rdata_ra.pc_id_new_min_err |
+                                       g_secure_pc.prev_instr_seq_new_min_err |
+                                       g_branch_predictor.g_bp_taken_ra.instr_bp_taken_new_min_err |
+                                       g_branch_predictor.instr_skid_valid_q_new_min_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_new_min_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_new_min_err |
+                                       g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_new_min_err |
+                                       dummy_instr_new_min_err;
+      
+      assign if_stage_scrub_occurred_o = base_scrub |
+                                          gen_dummy_instr.dummy_instr_id_scrub_occurred |
+                                          g_instr_rdata_ra.instr_rdata_id_scrub_occurred |
+                                          g_instr_rdata_ra.instr_rdata_alu_id_scrub_occurred |
+                                          g_instr_rdata_ra.instr_fetch_err_scrub_occurred |
+                                          g_instr_rdata_ra.instr_fetch_err_plus2_scrub_occurred |
+                                          g_instr_rdata_ra.instr_rdata_c_id_scrub_occurred |
+                                          g_instr_rdata_ra.instr_is_compressed_id_scrub_occurred |
+                                          g_instr_rdata_ra.illegal_c_insn_id_scrub_occurred |
+                                          g_instr_rdata_ra.pc_id_scrub_occurred |
+                                          g_secure_pc.prev_instr_seq_scrub_occurred |
+                                          g_branch_predictor.g_bp_taken_ra.instr_bp_taken_scrub_occurred |
+                                          g_branch_predictor.instr_skid_valid_q_scrub_occurred |
+                                          g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_scrub_occurred |
+                                          g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_scrub_occurred |
+                                          g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_scrub_occurred |
+                                          dummy_instr_scrub_occurred;
+    end else begin : g_mixed_features
+      // For all other combinations, build aggregation dynamically
+      logic dummy_maj, dummy_min, dummy_scrub;
+      logic rdata_maj, rdata_min, rdata_scrub;
+      logic pc_check_maj, pc_check_min, pc_check_scrub;
+      logic bp_maj, bp_min, bp_scrub;
+      
+      if (DummyInstructions) begin
+        assign dummy_maj = gen_dummy_instr.dummy_instr_id_new_maj_err;
+        assign dummy_min = gen_dummy_instr.dummy_instr_id_new_min_err;
+        assign dummy_scrub = gen_dummy_instr.dummy_instr_id_scrub_occurred;
+      end else begin
+        assign dummy_maj = 1'b0;
+        assign dummy_min = 1'b0;
+        assign dummy_scrub = 1'b0;
+      end
+      
+      if (ResetAll) begin
+        assign rdata_maj = g_instr_rdata_ra.instr_rdata_id_new_maj_err |
+                           g_instr_rdata_ra.instr_rdata_alu_id_new_maj_err |
+                           g_instr_rdata_ra.instr_fetch_err_new_maj_err |
+                           g_instr_rdata_ra.instr_fetch_err_plus2_new_maj_err |
+                           g_instr_rdata_ra.instr_rdata_c_id_new_maj_err |
+                           g_instr_rdata_ra.instr_is_compressed_id_new_maj_err |
+                           g_instr_rdata_ra.illegal_c_insn_id_new_maj_err |
+                           g_instr_rdata_ra.pc_id_new_maj_err;
+        assign rdata_min = g_instr_rdata_ra.instr_rdata_id_new_min_err |
+                           g_instr_rdata_ra.instr_rdata_alu_id_new_min_err |
+                           g_instr_rdata_ra.instr_fetch_err_new_min_err |
+                           g_instr_rdata_ra.instr_fetch_err_plus2_new_min_err |
+                           g_instr_rdata_ra.instr_rdata_c_id_new_min_err |
+                           g_instr_rdata_ra.instr_is_compressed_id_new_min_err |
+                           g_instr_rdata_ra.illegal_c_insn_id_new_min_err |
+                           g_instr_rdata_ra.pc_id_new_min_err;
+        assign rdata_scrub = g_instr_rdata_ra.instr_rdata_id_scrub_occurred |
+                             g_instr_rdata_ra.instr_rdata_alu_id_scrub_occurred |
+                             g_instr_rdata_ra.instr_fetch_err_scrub_occurred |
+                             g_instr_rdata_ra.instr_fetch_err_plus2_scrub_occurred |
+                             g_instr_rdata_ra.instr_rdata_c_id_scrub_occurred |
+                             g_instr_rdata_ra.instr_is_compressed_id_scrub_occurred |
+                             g_instr_rdata_ra.illegal_c_insn_id_scrub_occurred |
+                             g_instr_rdata_ra.pc_id_scrub_occurred;
+      end else begin
+        assign rdata_maj = g_instr_rdata_nr.instr_rdata_id_no_rst_new_maj_err |
+                           g_instr_rdata_nr.instr_rdata_alu_id_no_rst_new_maj_err |
+                           g_instr_rdata_nr.instr_fetch_err_no_rst_new_maj_err |
+                           g_instr_rdata_nr.instr_fetch_err_plus2_no_rst_new_maj_err |
+                           g_instr_rdata_nr.instr_rdata_c_id_new_maj_err |
+                           g_instr_rdata_nr.instr_is_compressed_id_no_rst_new_maj_err |
+                           g_instr_rdata_nr.illegal_c_insn_id_no_rst_new_maj_err |
+                           g_instr_rdata_nr.pc_id_new_maj_err;
+        assign rdata_min = g_instr_rdata_nr.instr_rdata_id_no_rst_new_min_err |
+                           g_instr_rdata_nr.instr_rdata_alu_id_no_rst_new_min_err |
+                           g_instr_rdata_nr.instr_fetch_err_no_rst_new_min_err |
+                           g_instr_rdata_nr.instr_fetch_err_plus2_no_rst_new_min_err |
+                           g_instr_rdata_nr.instr_rdata_c_id_new_min_err |
+                           g_instr_rdata_nr.instr_is_compressed_id_no_rst_new_min_err |
+                           g_instr_rdata_nr.illegal_c_insn_id_no_rst_new_min_err |
+                           g_instr_rdata_nr.pc_id_new_min_err;
+        assign rdata_scrub = g_instr_rdata_nr.instr_rdata_id_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.instr_rdata_alu_id_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.instr_fetch_err_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.instr_fetch_err_plus2_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.instr_rdata_c_id_scrub_occurred |
+                             g_instr_rdata_nr.instr_is_compressed_id_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.illegal_c_insn_id_no_rst_scrub_occurred |
+                             g_instr_rdata_nr.pc_id_scrub_occurred;
+      end
+      
+      if (PCIncrCheck) begin
+        assign pc_check_maj = g_secure_pc.prev_instr_seq_new_maj_err;
+        assign pc_check_min = g_secure_pc.prev_instr_seq_new_min_err;
+        assign pc_check_scrub = g_secure_pc.prev_instr_seq_scrub_occurred;
+      end else begin
+        assign pc_check_maj = 1'b0;
+        assign pc_check_min = 1'b0;
+        assign pc_check_scrub = 1'b0;
+      end
+      
+      if (BranchPredictor && ResetAll) begin
+        assign bp_maj = g_branch_predictor.g_bp_taken_ra.instr_bp_taken_new_maj_err |
+                        g_branch_predictor.instr_skid_valid_q_new_maj_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_new_maj_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_new_maj_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_new_maj_err;
+        assign bp_min = g_branch_predictor.g_bp_taken_ra.instr_bp_taken_new_min_err |
+                        g_branch_predictor.instr_skid_valid_q_new_min_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_new_min_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_new_min_err |
+                        g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_new_min_err;
+        assign bp_scrub = g_branch_predictor.g_bp_taken_ra.instr_bp_taken_scrub_occurred |
+                          g_branch_predictor.instr_skid_valid_q_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_ra.instr_skid_bp_taken_q_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_ra.instr_skid_data_q_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_ra.instr_skid_addr_q_scrub_occurred;
+      end else if (BranchPredictor && !ResetAll) begin
+        assign bp_maj = g_branch_predictor.g_bp_taken_nr.instr_bp_taken_no_rst_new_maj_err |
+                        g_branch_predictor.instr_skid_valid_q_new_maj_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_bp_taken_q_no_rst_new_maj_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_data_q_no_rst_new_maj_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_addr_q_no_rst_new_maj_err;
+        assign bp_min = g_branch_predictor.g_bp_taken_nr.instr_bp_taken_no_rst_new_min_err |
+                        g_branch_predictor.instr_skid_valid_q_new_min_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_bp_taken_q_no_rst_new_min_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_data_q_no_rst_new_min_err |
+                        g_branch_predictor.g_instr_skid_nr.instr_skid_addr_q_no_rst_new_min_err;
+        assign bp_scrub = g_branch_predictor.g_bp_taken_nr.instr_bp_taken_no_rst_scrub_occurred |
+                          g_branch_predictor.instr_skid_valid_q_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_nr.instr_skid_bp_taken_q_no_rst_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_nr.instr_skid_data_q_no_rst_scrub_occurred |
+                          g_branch_predictor.g_instr_skid_nr.instr_skid_addr_q_no_rst_scrub_occurred;
+      end else begin
+        assign bp_maj = 1'b0;
+        assign bp_min = 1'b0;
+        assign bp_scrub = 1'b0;
+      end
+      
+      assign if_stage_new_maj_err_o = base_maj_err | dummy_maj | rdata_maj | pc_check_maj | bp_maj | dummy_instr_new_maj_err;
+      assign if_stage_new_min_err_o = base_min_err | dummy_min | rdata_min | pc_check_min | bp_min | dummy_instr_new_min_err;
+      assign if_stage_scrub_occurred_o = base_scrub | dummy_scrub | rdata_scrub | pc_check_scrub | bp_scrub | dummy_instr_scrub_occurred;
+    end
+  endgenerate
 
 endmodule

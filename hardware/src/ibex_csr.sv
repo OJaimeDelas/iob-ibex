@@ -20,11 +20,22 @@ module ibex_csr #(
   input  logic             wr_en_i,
   output logic [Width-1:0] rd_data_o,
 
-  output logic             rd_error_o
+  output logic             rd_error_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic             csr_new_maj_err_o,
+  output logic             csr_new_min_err_o,
+  output logic             csr_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   logic [Width-1:0] rdata_q;
-  `IOB_REG_TMR(Width, ResetValue, '0, !rst_ni, wr_en_i, wr_data_i, rdata_q, rdata)
+  `FATORI_REG(ResetValue, !rst_ni, wr_en_i, wr_data_i, rdata_q, fi_port, 8'd79, '0, '0, rdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_q <= ResetValue;
@@ -37,7 +48,7 @@ module ibex_csr #(
 
   if (ShadowCopy) begin : gen_shadow
     logic [Width-1:0] shadow_q;
-    `IOB_REG_TMR(Width, ~ResetValue, '0, !rst_ni, wr_en_i, ~wr_data_i, shadow_q, shadow)
+    `FATORI_REG(~ResetValue, !rst_ni, wr_en_i, ~wr_data_i, shadow_q, fi_port, 8'd80, '0, '0, shadow)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     shadow_q <= ~ResetValue;
@@ -53,5 +64,20 @@ module ibex_csr #(
   end
 
   `ASSERT_KNOWN(IbexCSREnValid, wr_en_i)
+
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  generate
+    if (ShadowCopy) begin : g_err_agg_with_shadow
+      assign csr_new_maj_err_o = rdata_new_maj_err | gen_shadow.shadow_new_maj_err;
+      assign csr_new_min_err_o = rdata_new_min_err | gen_shadow.shadow_new_min_err;
+      assign csr_scrub_occurred_o = rdata_scrub_occurred | gen_shadow.shadow_scrub_occurred;
+    end else begin : g_err_agg_no_shadow
+      assign csr_new_maj_err_o = rdata_new_maj_err;
+      assign csr_new_min_err_o = rdata_new_min_err;
+      assign csr_scrub_occurred_o = rdata_scrub_occurred;
+    end
+  endgenerate
 
 endmodule

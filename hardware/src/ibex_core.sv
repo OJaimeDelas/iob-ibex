@@ -49,11 +49,7 @@ module ibex_core import ibex_pkg::*; #(
 ) (
   // Clock and Reset
   input  logic                         clk_i,
-  // Internally generated resets in ibex_lockstep cause IMPERFECTSCH warnings.
-  // TODO: Remove when upgrading Verilator #2134.
-  /* verilator lint_off IMPERFECTSCH */
   input  logic                         rst_ni,
-  /* verilator lint_on IMPERFECTSCH */
 
   input  logic [31:0]                  hart_id_i,
   input  logic [31:0]                  boot_addr_i,
@@ -164,14 +160,46 @@ module ibex_core import ibex_pkg::*; #(
   output logic                         alert_minor_o,
   output logic                         alert_major_internal_o,
   output logic                         alert_major_bus_o,
-  output ibex_mubi_t                   core_busy_o
+  output ibex_mubi_t                   core_busy_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                         core_new_maj_err_o,
+  output logic                         core_new_min_err_o,
+  output logic                         core_scrub_occurred_o
+
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+  
+  // FATORI Fault Tolerance Metrics Inputs (gated by FT_LAYER)
+  `ifdef FATORI_FT_LAYER_1
+    ,input  logic [15:0]     fatori_minor_cnt_i
+    ,input  logic [15:0]     fatori_major_cnt_i
+    
+    `ifdef FATORI_FT_LAYER_2
+      ,input  logic [15:0]     fatori_corrected_cnt_i
+      
+      `ifdef FATORI_FT_LAYER_3
+        ,input  logic [31:0]     fatori_cycles_to_first_min_i
+        ,input  logic [31:0]     fatori_cycles_to_first_maj_i
+        ,input  logic [15:0]     fatori_last_detection_latency_i
+        
+        `ifdef FATORI_FT_LAYER_4
+          ,input  logic [31:0]     fatori_latency_sum_i
+          ,input  logic [15:0]     fatori_latency_count_i
+        `endif
+      `endif
+    `endif
+  `endif
+
 );
 
   localparam int unsigned PMPNumChan      = 3;
   // SEC_CM: CORE.DATA_REG_SW.SCA
-  localparam bit          DataIndTiming     = `FTM_DATA_INDEP_TIMING;
-  localparam bit          PCIncrCheck       = `FTM_HARDENED_PC;
-  localparam bit          ShadowCSR         = `FTM_SHADOW_CSRS;
+  localparam bit          DataIndTiming     = `FATORI_DATA_INDEP_TIMING;
+  localparam bit          PCIncrCheck       = `FATORI_HARDENED_PC;
+  localparam bit          ShadowCSR         = `FATORI_SHADOW_CSRS;
 
   // IF/ID signals
   logic        dummy_instr_id;
@@ -386,7 +414,7 @@ module ibex_core import ibex_pkg::*; #(
 
   // Before going to sleep, wait for I- and D-side
   // interfaces to finish ongoing operations.
-  if (`FTM_SECURE_GUARDS) begin : g_core_busy_secure
+  if (`FATORI_SECURE_GUARDS) begin : g_core_busy_secure
     // For secure Ibex, the individual bits of core_busy_o are generated from different copies of
     // the various busy signal.
     localparam int unsigned NumBusySignals = 3;
@@ -415,100 +443,235 @@ module ibex_core import ibex_pkg::*; #(
   //////////////
   // IF stage //
   //////////////
+  
+  // Child error aggregation signals
+  logic if_stage_new_maj_err, if_stage_new_min_err;
 
-  ibex_if_stage #(
-    .DmHaltAddr       (DmHaltAddr),
-    .DmExceptionAddr  (DmExceptionAddr),
-    .DummyInstructions(DummyInstructions),
-    .ICache           (ICache),
-    .ICacheECC        (ICacheECC),
-    .BusSizeECC       (BusSizeECC),
-    .TagSizeECC       (TagSizeECC),
-    .LineSizeECC      (LineSizeECC),
-    .PCIncrCheck      (PCIncrCheck),
-    .ResetAll         (ResetAll),
-    .RndCnstLfsrSeed  (RndCnstLfsrSeed),
-    .RndCnstLfsrPerm  (RndCnstLfsrPerm),
-    .BranchPredictor  (BranchPredictor),
-    .MemECC           (MemECC),
-    .MemDataWidth     (MemDataWidth)
-  ) if_stage_i (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni),
+  generate
+    if (`IFSTAGE_MON_N > 1) begin : g_if_mon
+      
+      `KEEP_IF_STAGE
+      fatori_mon_wrap_if_stage #(
+        .N   (`IFSTAGE_MON_N),
+        .M   (`IFSTAGE_MON_M),
+        .HOLD(`IFSTAGE_MON_HOLD),
 
-    .boot_addr_i(boot_addr_i),
-    .req_i      (instr_req_gated),  // instruction request control
+        // pass-through params
+        .DmHaltAddr       (DmHaltAddr),
+        .DmExceptionAddr  (DmExceptionAddr),
+        .DummyInstructions(DummyInstructions),
+        .ICache           (ICache),
+        .ICacheECC        (ICacheECC),
+        .BusSizeECC       (BusSizeECC),
+        .TagSizeECC       (TagSizeECC),
+        .LineSizeECC      (LineSizeECC),
+        .PCIncrCheck      (PCIncrCheck),
+        .ResetAll         (ResetAll),
+        .RndCnstLfsrSeed  (RndCnstLfsrSeed),
+        .RndCnstLfsrPerm  (RndCnstLfsrPerm),
+        .BranchPredictor  (BranchPredictor),
+        .MemECC           (MemECC),
+        .MemDataWidth     (MemDataWidth)
+      ) if_stage_mon (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
 
-    // instruction cache interface
-    .instr_req_o       (instr_req_o),
-    .instr_addr_o      (instr_addr_o),
-    .instr_gnt_i       (instr_gnt_i),
-    .instr_rvalid_i    (instr_rvalid_i),
-    .instr_rdata_i     (instr_rdata_i),
-    .instr_bus_err_i   (instr_err_i),
-    .instr_intg_err_o  (instr_intg_err),
+        .boot_addr_i(boot_addr_i),
+        .req_i      (instr_req_gated),  // instruction request control
 
-    .ic_tag_req_o      (ic_tag_req_o),
-    .ic_tag_write_o    (ic_tag_write_o),
-    .ic_tag_addr_o     (ic_tag_addr_o),
-    .ic_tag_wdata_o    (ic_tag_wdata_o),
-    .ic_tag_rdata_i    (ic_tag_rdata_i),
-    .ic_data_req_o     (ic_data_req_o),
-    .ic_data_write_o   (ic_data_write_o),
-    .ic_data_addr_o    (ic_data_addr_o),
-    .ic_data_wdata_o   (ic_data_wdata_o),
-    .ic_data_rdata_i   (ic_data_rdata_i),
-    .ic_scr_key_valid_i(ic_scr_key_valid_i),
-    .ic_scr_key_req_o  (ic_scr_key_req_o),
+        // instruction cache interface
+        .instr_req_o       (instr_req_o),
+        .instr_addr_o      (instr_addr_o),
+        .instr_gnt_i       (instr_gnt_i),
+        .instr_rvalid_i    (instr_rvalid_i),
+        .instr_rdata_i     (instr_rdata_i),
+        .instr_bus_err_i   (instr_err_i),
+        .instr_intg_err_o  (instr_intg_err),
 
-    // outputs to ID stage
-    .instr_valid_id_o        (instr_valid_id),
-    .instr_new_id_o          (instr_new_id),
-    .instr_rdata_id_o        (instr_rdata_id),
-    .instr_rdata_alu_id_o    (instr_rdata_alu_id),
-    .instr_rdata_c_id_o      (instr_rdata_c_id),
-    .instr_is_compressed_id_o(instr_is_compressed_id),
-    .instr_bp_taken_o        (instr_bp_taken_id),
-    .instr_fetch_err_o       (instr_fetch_err),
-    .instr_fetch_err_plus2_o (instr_fetch_err_plus2),
-    .illegal_c_insn_id_o     (illegal_c_insn_id),
-    .dummy_instr_id_o        (dummy_instr_id),
-    .pc_if_o                 (pc_if),
-    .pc_id_o                 (pc_id),
-    .pmp_err_if_i            (pmp_req_err[PMP_I]),
-    .pmp_err_if_plus2_i      (pmp_req_err[PMP_I2]),
+        .ic_tag_req_o      (ic_tag_req_o),
+        .ic_tag_write_o    (ic_tag_write_o),
+        .ic_tag_addr_o     (ic_tag_addr_o),
+        .ic_tag_wdata_o    (ic_tag_wdata_o),
+        .ic_tag_rdata_i    (ic_tag_rdata_i),
+        .ic_data_req_o     (ic_data_req_o),
+        .ic_data_write_o   (ic_data_write_o),
+        .ic_data_addr_o    (ic_data_addr_o),
+        .ic_data_wdata_o   (ic_data_wdata_o),
+        .ic_data_rdata_i   (ic_data_rdata_i),
+        .ic_scr_key_valid_i(ic_scr_key_valid_i),
+        .ic_scr_key_req_o  (ic_scr_key_req_o),
 
-    // control signals
-    .instr_valid_clear_i   (instr_valid_clear),
-    .pc_set_i              (pc_set),
-    .pc_mux_i              (pc_mux_id),
-    .nt_branch_mispredict_i(nt_branch_mispredict),
-    .exc_pc_mux_i          (exc_pc_mux_id),
-    .exc_cause             (exc_cause),
-    .dummy_instr_en_i      (dummy_instr_en),
-    .dummy_instr_mask_i    (dummy_instr_mask),
-    .dummy_instr_seed_en_i (dummy_instr_seed_en),
-    .dummy_instr_seed_i    (dummy_instr_seed),
-    .icache_enable_i       (icache_enable),
-    .icache_inval_i        (icache_inval),
-    .icache_ecc_error_o    (icache_ecc_error),
+        // outputs to ID stage
+        .instr_valid_id_o        (instr_valid_id),
+        .instr_new_id_o          (instr_new_id),
+        .instr_rdata_id_o        (instr_rdata_id),
+        .instr_rdata_alu_id_o    (instr_rdata_alu_id),
+        .instr_rdata_c_id_o      (instr_rdata_c_id),
+        .instr_is_compressed_id_o(instr_is_compressed_id),
+        .instr_bp_taken_o        (instr_bp_taken_id),
+        .instr_fetch_err_o       (instr_fetch_err),
+        .instr_fetch_err_plus2_o (instr_fetch_err_plus2),
+        .illegal_c_insn_id_o     (illegal_c_insn_id),
+        .dummy_instr_id_o        (dummy_instr_id),
+        .pc_if_o                 (pc_if),
+        .pc_id_o                 (pc_id),
+        .pmp_err_if_i            (pmp_req_err[PMP_I]),
+        .pmp_err_if_plus2_i      (pmp_req_err[PMP_I2]),
 
-    // branch targets
-    .branch_target_ex_i(branch_target_ex),
-    .nt_branch_addr_i  (nt_branch_addr),
+        // control signals
+        .instr_valid_clear_i   (instr_valid_clear),
+        .pc_set_i              (pc_set),
+        .pc_mux_i              (pc_mux_id),
+        .nt_branch_mispredict_i(nt_branch_mispredict),
+        .exc_pc_mux_i          (exc_pc_mux_id),
+        .exc_cause             (exc_cause),
+        .dummy_instr_en_i      (dummy_instr_en),
+        .dummy_instr_mask_i    (dummy_instr_mask),
+        .dummy_instr_seed_en_i (dummy_instr_seed_en),
+        .dummy_instr_seed_i    (dummy_instr_seed),
+        .icache_enable_i       (icache_enable),
+        .icache_inval_i        (icache_inval),
+        .icache_ecc_error_o    (icache_ecc_error),
 
-    // CSRs
-    .csr_mepc_i      (csr_mepc),  // exception return address
-    .csr_depc_i      (csr_depc),  // debug return address
-    .csr_mtvec_i     (csr_mtvec),  // trap-vector base address
-    .csr_mtvec_init_o(csr_mtvec_init),
+        // branch targets
+        .branch_target_ex_i(branch_target_ex),
+        .nt_branch_addr_i  (nt_branch_addr),
 
-    // pipeline stalls
-    .id_in_ready_i(id_in_ready),
+        // CSRs
+        .csr_mepc_i      (csr_mepc),  // exception return address
+        .csr_depc_i      (csr_depc),  // debug return address
+        .csr_mtvec_i     (csr_mtvec),  // trap-vector base address
+        .csr_mtvec_init_o(csr_mtvec_init),
 
-    .pc_mismatch_alert_o(pc_mismatch_alert),
-    .if_busy_o          (if_busy)
-  );
+        // pipeline stalls
+        .id_in_ready_i(id_in_ready),
+
+        .pc_mismatch_alert_o(pc_mismatch_alert),
+        .if_busy_o          (if_busy),
+
+        .min_err_o(if_min_err),
+        .maj_err_o(if_maj_err),
+        
+        // Child error aggregation
+        .if_stage_new_maj_err_o(if_stage_new_maj_err),
+        .if_stage_new_min_err_o(if_stage_new_min_err)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
+      );
+    end else begin : g_if_single
+      
+      `KEEP_IF_STAGE
+      ibex_if_stage #(
+        .DmHaltAddr       (DmHaltAddr),
+        .DmExceptionAddr  (DmExceptionAddr),
+        .DummyInstructions(DummyInstructions),
+        .ICache           (ICache),
+        .ICacheECC        (ICacheECC),
+        .BusSizeECC       (BusSizeECC),
+        .TagSizeECC       (TagSizeECC),
+        .LineSizeECC      (LineSizeECC),
+        .PCIncrCheck      (PCIncrCheck),
+        .ResetAll         (ResetAll),
+        .RndCnstLfsrSeed  (RndCnstLfsrSeed),
+        .RndCnstLfsrPerm  (RndCnstLfsrPerm),
+        .BranchPredictor  (BranchPredictor),
+        .MemECC           (MemECC),
+        .MemDataWidth     (MemDataWidth)
+      ) if_stage_i (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+
+        .boot_addr_i(boot_addr_i),
+        .req_i      (instr_req_gated),  // instruction request control
+
+        // instruction cache interface
+        .instr_req_o       (instr_req_o),
+        .instr_addr_o      (instr_addr_o),
+        .instr_gnt_i       (instr_gnt_i),
+        .instr_rvalid_i    (instr_rvalid_i),
+        .instr_rdata_i     (instr_rdata_i),
+        .instr_bus_err_i   (instr_err_i),
+        .instr_intg_err_o  (instr_intg_err),
+
+        .ic_tag_req_o      (ic_tag_req_o),
+        .ic_tag_write_o    (ic_tag_write_o),
+        .ic_tag_addr_o     (ic_tag_addr_o),
+        .ic_tag_wdata_o    (ic_tag_wdata_o),
+        .ic_tag_rdata_i    (ic_tag_rdata_i),
+        .ic_data_req_o     (ic_data_req_o),
+        .ic_data_write_o   (ic_data_write_o),
+        .ic_data_addr_o    (ic_data_addr_o),
+        .ic_data_wdata_o   (ic_data_wdata_o),
+        .ic_data_rdata_i   (ic_data_rdata_i),
+        .ic_scr_key_valid_i(ic_scr_key_valid_i),
+        .ic_scr_key_req_o  (ic_scr_key_req_o),
+
+        // outputs to ID stage
+        .instr_valid_id_o        (instr_valid_id),
+        .instr_new_id_o          (instr_new_id),
+        .instr_rdata_id_o        (instr_rdata_id),
+        .instr_rdata_alu_id_o    (instr_rdata_alu_id),
+        .instr_rdata_c_id_o      (instr_rdata_c_id),
+        .instr_is_compressed_id_o(instr_is_compressed_id),
+        .instr_bp_taken_o        (instr_bp_taken_id),
+        .instr_fetch_err_o       (instr_fetch_err),
+        .instr_fetch_err_plus2_o (instr_fetch_err_plus2),
+        .illegal_c_insn_id_o     (illegal_c_insn_id),
+        .dummy_instr_id_o        (dummy_instr_id),
+        .pc_if_o                 (pc_if),
+        .pc_id_o                 (pc_id),
+        .pmp_err_if_i            (pmp_req_err[PMP_I]),
+        .pmp_err_if_plus2_i      (pmp_req_err[PMP_I2]),
+
+        // control signals
+        .instr_valid_clear_i   (instr_valid_clear),
+        .pc_set_i              (pc_set),
+        .pc_mux_i              (pc_mux_id),
+        .nt_branch_mispredict_i(nt_branch_mispredict),
+        .exc_pc_mux_i          (exc_pc_mux_id),
+        .exc_cause             (exc_cause),
+        .dummy_instr_en_i      (dummy_instr_en),
+        .dummy_instr_mask_i    (dummy_instr_mask),
+        .dummy_instr_seed_en_i (dummy_instr_seed_en),
+        .dummy_instr_seed_i    (dummy_instr_seed),
+        .icache_enable_i       (icache_enable),
+        .icache_inval_i        (icache_inval),
+        .icache_ecc_error_o    (icache_ecc_error),
+
+        // branch targets
+        .branch_target_ex_i(branch_target_ex),
+        .nt_branch_addr_i  (nt_branch_addr),
+
+        // CSRs
+        .csr_mepc_i      (csr_mepc),  // exception return address
+        .csr_depc_i      (csr_depc),  // debug return address
+        .csr_mtvec_i     (csr_mtvec),  // trap-vector base address
+        .csr_mtvec_init_o(csr_mtvec_init),
+
+        // pipeline stalls
+        .id_in_ready_i(id_in_ready),
+
+        .pc_mismatch_alert_o(pc_mismatch_alert),
+        .if_busy_o          (if_busy),
+        
+        // Child error aggregation
+        .if_stage_new_maj_err_o(if_stage_new_maj_err),
+        .if_stage_new_min_err_o(if_stage_new_min_err)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
+      );
+
+      assign if_min_err = 1'b0;
+      assign if_maj_err = 1'b0;
+    end
+  endgenerate
+
+
+  
 
   // Core is waiting for the ISide when ID/EX stage is ready for a new instruction but none are
   // available
@@ -521,7 +684,7 @@ module ibex_core import ibex_pkg::*; #(
   `ASSERT_INIT(IbexMuBiSecureOffBottomBitClear, IbexMuBiOff[0] == 1'b0)
 
   // fetch_enable_i can be used to stop the core fetching new instructions
-  if (`FTM_SECURE_GUARDS) begin : g_instr_req_gated_secure
+  if (`FATORI_SECURE_GUARDS) begin : g_instr_req_gated_secure
     // For secure Ibex fetch_enable_i must be a specific multi-bit pattern to enable instruction
     // fetch
     // SEC_CM: FETCH.CTRL.LC_GATED
@@ -540,6 +703,10 @@ module ibex_core import ibex_pkg::*; #(
   // ID stage //
   //////////////
 
+  // Child error aggregation signals
+  logic id_stage_new_maj_err, id_stage_new_min_err;
+  
+  `KEEP_ID_STAGE
   ibex_id_stage #(
     .RV32E          (RV32E),
     .RV32M          (RV32M),
@@ -700,7 +867,15 @@ module ibex_core import ibex_pkg::*; #(
     .perf_dside_wait_o(perf_dside_wait),
     .perf_mul_wait_o  (perf_mul_wait),
     .perf_div_wait_o  (perf_div_wait),
-    .instr_id_done_o  (instr_id_done)
+    .instr_id_done_o  (instr_id_done),
+    
+    // Child error aggregation
+    .id_stage_new_maj_err_o(id_stage_new_maj_err),
+    .id_stage_new_min_err_o(id_stage_new_min_err)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // for RVFI only
@@ -758,57 +933,151 @@ module ibex_core import ibex_pkg::*; #(
   assign data_req_o   = data_req_out & ~pmp_req_err[PMP_D];
   assign lsu_resp_err = lsu_load_err | lsu_store_err;
 
-  ibex_load_store_unit #(
-    .MemECC(MemECC),
-    .MemDataWidth(MemDataWidth)
-  ) load_store_unit_i (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni),
+  generate
+    if (`LSU_MON_N>1) begin : g_lsu_mon
 
-    // data interface
-    .data_req_o    (data_req_out),
-    .data_gnt_i    (data_gnt_i),
-    .data_rvalid_i (data_rvalid_i),
-    .data_bus_err_i(data_err_i),
-    .data_pmp_err_i(pmp_req_err[PMP_D]),
+      logic lsu_maj_err, lsu_min_err;
+      logic lsu_new_maj_err, lsu_new_min_err;
+      logic lsu_scrub_occurred;
 
-    .data_addr_o      (data_addr_o),
-    .data_we_o        (data_we_o),
-    .data_be_o        (data_be_o),
-    .data_wdata_o     (data_wdata_o),
-    .data_rdata_i     (data_rdata_i),
+      `KEEP_LSU
+      fatori_mon_wrap_lsu #(
+        .N(`LSU_MON_N),
+        .M(`LSU_MON_M),
+        .HOLD(`LSU_MON_HOLD),
+        .MemECC(MemECC),
+        .MemDataWidth(MemDataWidth)
+      ) load_store_unit_mon (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
 
-    // signals to/from ID/EX stage
-    .lsu_we_i      (lsu_we),
-    .lsu_type_i    (lsu_type),
-    .lsu_wdata_i   (lsu_wdata),
-    .lsu_sign_ext_i(lsu_sign_ext),
+        // data interface
+        .data_req_o    (data_req_out),
+        .data_gnt_i    (data_gnt_i),
+        .data_rvalid_i (data_rvalid_i),
+        .data_bus_err_i(data_err_i),
+        .data_pmp_err_i(pmp_req_err[PMP_D]),
 
-    .lsu_rdata_o      (rf_wdata_lsu),
-    .lsu_rdata_valid_o(lsu_rdata_valid),
-    .lsu_req_i        (lsu_req),
-    .lsu_req_done_o   (lsu_req_done),
+        .data_addr_o      (data_addr_o),
+        .data_we_o        (data_we_o),
+        .data_be_o        (data_be_o),
+        .data_wdata_o     (data_wdata_o),
+        .data_rdata_i     (data_rdata_i),
 
-    .adder_result_ex_i(alu_adder_result_ex),
+        // signals to/from ID/EX stage
+        .lsu_we_i      (lsu_we),
+        .lsu_type_i    (lsu_type),
+        .lsu_wdata_i   (lsu_wdata),
+        .lsu_sign_ext_i(lsu_sign_ext),
 
-    .addr_incr_req_o(lsu_addr_incr_req),
-    .addr_last_o    (lsu_addr_last),
+        .lsu_rdata_o      (rf_wdata_lsu),
+        .lsu_rdata_valid_o(lsu_rdata_valid),
+        .lsu_req_i        (lsu_req),
+        .lsu_req_done_o   (lsu_req_done),
+
+        .adder_result_ex_i(alu_adder_result_ex),
+
+        .addr_incr_req_o(lsu_addr_incr_req),
+        .addr_last_o    (lsu_addr_last),
 
 
-    .lsu_resp_valid_o(lsu_resp_valid),
+        .lsu_resp_valid_o(lsu_resp_valid),
 
-    // exception signals
-    .load_err_o           (lsu_load_err_raw),
-    .load_resp_intg_err_o (lsu_load_resp_intg_err),
-    .store_err_o          (lsu_store_err_raw),
-    .store_resp_intg_err_o(lsu_store_resp_intg_err),
+        // exception signals
+        .load_err_o           (lsu_load_err_raw),
+        .load_resp_intg_err_o (lsu_load_resp_intg_err),
+        .store_err_o          (lsu_store_err_raw),
+        .store_resp_intg_err_o(lsu_store_resp_intg_err),
 
-    .busy_o(lsu_busy),
+        .busy_o(lsu_busy),
 
-    .perf_load_o (perf_load),
-    .perf_store_o(perf_store)
-  );
+        .perf_load_o (perf_load),
+        .perf_store_o(perf_store),
 
+        .min_err_o(lsu_min_err),
+        .maj_err_o(lsu_maj_err),
+        
+        // Child error aggregation
+        .lsu_new_maj_err_o(lsu_new_maj_err),
+        .lsu_new_min_err_o(lsu_new_min_err),
+        .lsu_scrub_occurred_o(lsu_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
+      );
+   end else begin : g_lsu_single
+      
+      logic lsu_new_maj_err, lsu_new_min_err;
+      logic lsu_scrub_occurred;
+
+      `KEEP_LSU
+      ibex_load_store_unit #(
+        .MemECC(MemECC),
+        .MemDataWidth(MemDataWidth)
+      ) load_store_unit_i (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+
+        // data interface
+        .data_req_o    (data_req_out),
+        .data_gnt_i    (data_gnt_i),
+        .data_rvalid_i (data_rvalid_i),
+        .data_bus_err_i(data_err_i),
+        .data_pmp_err_i(pmp_req_err[PMP_D]),
+
+        .data_addr_o      (data_addr_o),
+        .data_we_o        (data_we_o),
+        .data_be_o        (data_be_o),
+        .data_wdata_o     (data_wdata_o),
+        .data_rdata_i     (data_rdata_i),
+
+        // signals to/from ID/EX stage
+        .lsu_we_i      (lsu_we),
+        .lsu_type_i    (lsu_type),
+        .lsu_wdata_i   (lsu_wdata),
+        .lsu_sign_ext_i(lsu_sign_ext),
+
+        .lsu_rdata_o      (rf_wdata_lsu),
+        .lsu_rdata_valid_o(lsu_rdata_valid),
+        .lsu_req_i        (lsu_req),
+        .lsu_req_done_o   (lsu_req_done),
+
+        .adder_result_ex_i(alu_adder_result_ex),
+
+        .addr_incr_req_o(lsu_addr_incr_req),
+        .addr_last_o    (lsu_addr_last),
+
+
+        .lsu_resp_valid_o(lsu_resp_valid),
+
+        // exception signals
+        .load_err_o           (lsu_load_err_raw),
+        .load_resp_intg_err_o (lsu_load_resp_intg_err),
+        .store_err_o          (lsu_store_err_raw),
+        .store_resp_intg_err_o(lsu_store_resp_intg_err),
+
+        .busy_o(lsu_busy),
+
+        .perf_load_o (perf_load),
+        .perf_store_o(perf_store),
+        
+        // Child error aggregation
+        .lsu_new_maj_err_o(lsu_new_maj_err),
+        .lsu_new_min_err_o(lsu_new_min_err),
+        .lsu_scrub_occurred_o(lsu_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
+      );
+    end
+  endgenerate
+  
+  // Child error aggregation signals
+  logic wb_stage_new_maj_err, wb_stage_new_min_err;
+
+  `KEEP_WB_STAGE
   ibex_wb_stage #(
     .ResetAll         (ResetAll),
     .WritebackStage   (WritebackStage),
@@ -852,10 +1121,18 @@ module ibex_core import ibex_pkg::*; #(
     .lsu_resp_valid_i(lsu_resp_valid),
     .lsu_resp_err_i  (lsu_resp_err),
 
-    .instr_done_wb_o(instr_done_wb)
+    .instr_done_wb_o(instr_done_wb),
+    
+    // Child error aggregation
+    .wb_stage_new_maj_err_o(wb_stage_new_maj_err),
+    .wb_stage_new_min_err_o(wb_stage_new_min_err)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
-  if (`FTM_SECURE_GUARDS) begin : g_check_mem_response
+  if (`FATORI_SECURE_GUARDS) begin : g_check_mem_response
     // For secure configurations only process load/store responses if we're expecting them to guard
     // against false responses being injected on to the bus
     assign lsu_load_err  = lsu_load_err_raw  & (outstanding_load_wb  | expecting_load_resp_id);
@@ -1005,8 +1282,8 @@ module ibex_core import ibex_pkg::*; #(
   logic [31:0]   pc_at_fetch_disable;
   ibex_mubi_t    last_fetch_enable;
 
-`IOB_REG_TMR(IbexMuBiWidth, '0, '0, !rst_ni, 1'b1, fetch_enable_i, last_fetch_enable, last_fetch_enable)
-`IOB_REG_TMR(32, '0, '0, !rst_ni, (fetch_enable_i != IbexMuBiOn) && (last_fetch_enable == IbexMuBiOn), pc_id, pc_at_fetch_disable, pc_at_fetch_disable)
+`FATORI_REG('0, !rst_ni, 1'b1, fetch_enable_i, last_fetch_enable, fi_port, 8'd19, '0, '0, last_fetch_enable)
+`FATORI_REG('0, !rst_ni, (fetch_enable_i != IbexMuBiOn) && (last_fetch_enable == IbexMuBiOn), pc_id, pc_at_fetch_disable, fi_port, 8'd20, '0, '0, pc_at_fetch_disable)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     pc_at_fetch_disable <= '0;
@@ -1041,6 +1318,9 @@ module ibex_core import ibex_pkg::*; #(
 
   assign csr_wdata  = alu_operand_a_ex;
   assign csr_addr   = csr_num_e'(csr_access ? alu_operand_b_ex[11:0] : 12'b0);
+  
+  // Child error aggregation signals
+  logic cs_registers_new_maj_err, cs_registers_new_min_err;
 
   ibex_cs_registers #(
     .DbgTriggerEn     (DbgTriggerEn),
@@ -1150,6 +1430,35 @@ module ibex_core import ibex_pkg::*; #(
     .dside_wait_i               (perf_dside_wait),
     .mul_wait_i                 (perf_mul_wait),
     .div_wait_i                 (perf_div_wait)
+
+   `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
+    
+    // Child error aggregation
+    ,.cs_registers_new_maj_err_o(cs_registers_new_maj_err)
+    ,.cs_registers_new_min_err_o(cs_registers_new_min_err)
+    
+    // FATORI Fault Tolerance Metrics (gated by FT_LAYER)
+    `ifdef FATORI_FT_LAYER_1
+      ,.fatori_minor_cnt_i(fatori_minor_cnt_i)
+      ,.fatori_major_cnt_i(fatori_major_cnt_i)
+      
+      `ifdef FATORI_FT_LAYER_2
+        ,.fatori_corrected_cnt_i(fatori_corrected_cnt_i)
+        
+        `ifdef FATORI_FT_LAYER_3
+          ,.fatori_cycles_to_first_min_i(fatori_cycles_to_first_min_i)
+          ,.fatori_cycles_to_first_maj_i(fatori_cycles_to_first_maj_i)
+          ,.fatori_last_detection_latency_i(fatori_last_detection_latency_i)
+          
+          `ifdef FATORI_FT_LAYER_4
+            ,.fatori_latency_sum_i(fatori_latency_sum_i)
+            ,.fatori_latency_count_i(fatori_latency_count_i)
+          `endif
+        `endif
+      `endif
+    `endif
   );
 
   // These assertions are in top-level as instr_valid_id required as the enable term
@@ -1397,7 +1706,7 @@ module ibex_core import ibex_pkg::*; #(
     // through the tracking pipeline
     assign rvfi_instr_new_wb = rvfi_instr_new_wb_q | (rvfi_stage_valid[0] & rvfi_stage_trap[0]);
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, 1'b1, rvfi_id_done, rvfi_instr_new_wb_q, rvfi_instr_new_wb_q)
+    `FATORI_REG('0, !rst_ni, 1'b1, rvfi_id_done, rvfi_instr_new_wb_q, fi_port, 8'd21, '0, '0, rvfi_instr_new_wb_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     rvfi_instr_new_wb_q <= 0;
@@ -1461,46 +1770,63 @@ module ibex_core import ibex_pkg::*; #(
   // When we already captured a trap, and there is upcoming nmi interrupt or
   // a debug request then recapture as nmi or debug request are supposed to
   // be serviced.
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
-              (new_debug_req & ~captured_debug_req) |
-              (new_nmi & ~captured_nmi & ~captured_debug_req))),
-              ~(if_stage_i.instr_valid_id_d), captured_valid, captured_valid)
 
-  `IOB_REG_TMR(18, '0, '0, !rst_ni, 
-              (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
-              (new_debug_req & ~captured_debug_req) |
-              (new_nmi & ~captured_nmi & ~captured_debug_req))),
-              cs_registers_i.mip, captured_mip, captured_mip)
+  // if_stage can be wrapped sometimes
+  generate
+  if (`IFSTAGE_MON_N > 1) begin: g_reg_ifstage_mon
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
-              (new_debug_req & ~captured_debug_req) |
-              (new_nmi & ~captured_nmi & ~captured_debug_req))),
-              irq_nm_i, captured_nmi, captured_nmi)
+    `FATORI_REG('0, !rst_ni, ((g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_valid_id_d & g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? cs_registers_i.mip : captured_mip, rvfi_ext_stage_pre_mip[0], fi_port, 8'd28, '0, '0, rvfi_ext_stage_pre_mip_0)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
-              (new_debug_req & ~captured_debug_req) |
-              (new_nmi & ~captured_nmi & ~captured_debug_req))),
-              id_stage_i.controller_i.irq_nm_int, captured_nmi_int, captured_nmi_int)
+    `FATORI_REG('0, !rst_ni, ((g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_valid_id_d & g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? irq_nm_i : captured_nmi, rvfi_ext_stage_nmi[0], fi_port, 8'd29, '0, '0, rvfi_ext_stage_nmi_0)
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+    `FATORI_REG('0, !rst_ni, ((g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_valid_id_d & g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? id_stage_i.controller_i.irq_nm_int : captured_nmi_int, rvfi_ext_stage_nmi_int[0], fi_port, 8'd30, '0, '0, rvfi_ext_stage_nmi_int_0)
+
+    `FATORI_REG('0, !rst_ni, ((g_if_mon.if_stage_mon.gen_reps[0].u_if.instr_valid_id_d & g_if_mon.if_stage_mon.gen_reps[0].u_if.u_ifinstr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? debug_req_i : captured_debug_req, rvfi_ext_stage_debug_req[0], fi_port, 8'd31, '0, '0, rvfi_ext_stage_debug_req_0)
+    
+    `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+                (new_debug_req & ~captured_debug_req) |
+                (new_nmi & ~captured_nmi & ~captured_debug_req))), ~(g_if_mon.if_stage_mon.gen_reps[0].u_if.u_ifinstr_valid_id_d), captured_valid, fi_port, 8'd22, '0, '0, captured_valid)
+    
+  end else begin: g_reg_ifstage_i
+
+    `FATORI_REG('0, !rst_ni, ((g_if_single.if_stage_i..instr_valid_id_d & g_if_single.if_stage_i..instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? cs_registers_i.mip : captured_mip, rvfi_ext_stage_pre_mip[0], fi_port, 8'd28, '0, '0, rvfi_ext_stage_pre_mip_0)
+
+    `FATORI_REG('0, !rst_ni, ((g_if_single.if_stage_i..instr_valid_id_d & g_if_single.if_stage_i..instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? irq_nm_i : captured_nmi, rvfi_ext_stage_nmi[0], fi_port, 8'd29, '0, '0, rvfi_ext_stage_nmi_0)
+
+    `FATORI_REG('0, !rst_ni, ((g_if_single.if_stage_i..instr_valid_id_d & g_if_single.if_stage_i..instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? id_stage_i.controller_i.irq_nm_int : captured_nmi_int, rvfi_ext_stage_nmi_int[0], fi_port, 8'd30, '0, '0, rvfi_ext_stage_nmi_int_0)
+
+    `FATORI_REG('0, !rst_ni, ((g_if_single.if_stage_i..instr_valid_id_d & g_if_single.if_stage_i..instr_new_id_d) | rvfi_irq_valid), (instr_valid_id | ~captured_valid) ? debug_req_i : captured_debug_req, rvfi_ext_stage_debug_req[0], fi_port, 8'd31, '0, '0, rvfi_ext_stage_debug_req_0)
+    
+    `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+                (new_debug_req & ~captured_debug_req) |
+                (new_nmi & ~captured_nmi & ~captured_debug_req))), ~(g_if_single.if_stage_i..instr_valid_id_d), captured_valid, fi_port, 8'd22, '0, '0, captured_valid)
+
+  end
+  endgenerate
+
+  `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
               (new_debug_req & ~captured_debug_req) |
-              (new_nmi & ~captured_nmi & ~captured_debug_req))),
-              debug_req_i, captured_debug_req, captured_debug_req)
+              (new_nmi & ~captured_nmi & ~captured_debug_req))), cs_registers_i.mip, captured_mip, fi_port, 8'd23, '0, '0, captured_mip)
+
+  `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+              (new_debug_req & ~captured_debug_req) |
+              (new_nmi & ~captured_nmi & ~captured_debug_req))), irq_nm_i, captured_nmi, fi_port, 8'd24, '0, '0, captured_nmi)
+
+  `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+              (new_debug_req & ~captured_debug_req) |
+              (new_nmi & ~captured_nmi & ~captured_debug_req))), id_stage_i.controller_i.irq_nm_int, captured_nmi_int, fi_port, 8'd25, '0, '0, captured_nmi_int)
+
+  `FATORI_REG('0, !rst_ni, (~instr_valid_id & (new_debug_req | new_irq | new_nmi | new_nmi_int) & ((~captured_valid) |
+              (new_debug_req & ~captured_debug_req) |
+              (new_nmi & ~captured_nmi & ~captured_debug_req))), debug_req_i, captured_debug_req, fi_port, 8'd26, '0, '0, captured_debug_req)
 
   // When the pipeline has emptied in preparation for handling a new interrupt send
   // a notification up the RVFI pipeline. This is used by the cosim to deal with cases where an
   // interrupt occurs before another interrupt or debug request but both occur before the first
   // instruction of the handler is executed and retired (where the cosim will see all the
   // interrupts and debug requests at once with no way to determine which occurred first).
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb &
-              ~captured_valid),
-              (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb & ~captured_valid),
-              rvfi_irq_valid, rvfi_irq_valid)
+  `FATORI_REG('0, !rst_ni, (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb &
+              ~captured_valid), (~instr_valid_id & ~new_debug_req & (new_irq | new_nmi | new_nmi_int) & ready_wb & ~captured_valid), rvfi_irq_valid, fi_port, 8'd27, '0, '0, rvfi_irq_valid)
                 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -1544,22 +1870,6 @@ module ibex_core import ibex_pkg::*; #(
   // logic we won't tell the DV environment about a trap that should have been taken. So if there's
   // no valid capture we grab the raw values of the irq/debug_req/nmi inputs whatever they are and
   // the DV environment will see if a trap should have been taken but wasn't.
-  `IOB_REG_TMR(18, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
-              (instr_valid_id | ~captured_valid) ? cs_registers_i.mip : captured_mip,
-              rvfi_ext_stage_pre_mip[0], rvfi_ext_stage_pre_mip_0)
-
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 
-              ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
-              (instr_valid_id | ~captured_valid) ? irq_nm_i : captured_nmi,
-              rvfi_ext_stage_nmi[0], rvfi_ext_stage_nmi_0)
-
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
-              (instr_valid_id | ~captured_valid) ? id_stage_i.controller_i.irq_nm_int : captured_nmi_int,
-              rvfi_ext_stage_nmi_int[0], rvfi_ext_stage_nmi_int_0)
-
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ((if_stage_i.instr_valid_id_d & if_stage_i.instr_new_id_d) | rvfi_irq_valid),
-              (instr_valid_id | ~captured_valid) ? debug_req_i : captured_debug_req,
-              rvfi_ext_stage_debug_req[0], rvfi_ext_stage_debug_req_0)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -1586,7 +1896,7 @@ module ibex_core import ibex_pkg::*; #(
   // rvfi_irq_valid signals an interrupt event to the cosim. These should only occur when the RVFI
   // pipe is empty so just send it straigh through.
   for (genvar i = 0; i < RVFI_STAGES + 1; i = i + 1) begin : g_rvfi_irq_valid
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, (i == 0) ? rvfi_irq_valid : rvfi_ext_stage_irq_valid[i-1], rvfi_ext_stage_irq_valid[i], rvfi_ext_stage_irq_valid_``i)
+    `FATORI_REG('0, !rst_ni, '1, (i == 0) ? rvfi_irq_valid : rvfi_ext_stage_irq_valid[i-1], rvfi_ext_stage_irq_valid[i], fi_port, 8'd32, '0, '0, rvfi_ext_stage_irq_valid_``i)
 
     // if (i == 0) begin : g_rvfi_irq_valid_first_stage
 
@@ -1615,150 +1925,117 @@ module ibex_core import ibex_pkg::*; #(
 for (genvar i = 0; i < RVFI_STAGES; i = i + 1) begin : g_rvfi_stages
   
   // Single register instances with conditional logic for inputs and enables
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? '0 : rvfi_stage_halt[i-1], 
-               rvfi_stage_halt[i], rvfi_stage_halt_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? '0 : rvfi_stage_halt[i-1], rvfi_stage_halt[i], fi_port, 8'd33, '0, '0, rvfi_stage_halt_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_trap_id : (rvfi_stage_trap[i-1] | rvfi_trap_wb), 
-               rvfi_stage_trap[i], rvfi_stage_trap_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_trap_id : (rvfi_stage_trap[i-1] | rvfi_trap_wb), rvfi_stage_trap[i], fi_port, 8'd34, '0, '0, rvfi_stage_trap_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_intr_d : rvfi_stage_intr[i-1], 
-               rvfi_stage_intr[i], rvfi_stage_intr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_intr_d : rvfi_stage_intr[i-1], rvfi_stage_intr[i], fi_port, 8'd35, '0, '0, rvfi_stage_intr_reg_``i)
                
-  `IOB_REG_TMR(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_stage_order_d : rvfi_stage_order[i-1], 
-               rvfi_stage_order[i], rvfi_stage_order_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_stage_order_d : rvfi_stage_order[i-1], rvfi_stage_order[i], fi_port, 8'd36, '0, '0, rvfi_stage_order_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_insn_id : rvfi_stage_insn[i-1], 
-               rvfi_stage_insn[i], rvfi_stage_insn_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_insn_id : rvfi_stage_insn[i-1], rvfi_stage_insn[i], fi_port, 8'd37, '0, '0, rvfi_stage_insn_reg_``i)
                
-  `IOB_REG_TMR(2,  {PRIV_LVL_M}, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? {priv_mode_id} : rvfi_stage_mode[i-1], 
-               rvfi_stage_mode[i], rvfi_stage_mode_reg_``i)
+  `FATORI_REG_ENUM({PRIV_LVL_M}, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? {priv_mode_id} : rvfi_stage_mode[i-1], rvfi_stage_mode[i], fi_port, 8'd38, '0, '0, rvfi_stage_mode_reg_``i)
                
-  `IOB_REG_TMR(2,  CSR_MISA_MXL, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? CSR_MISA_MXL : rvfi_stage_ixl[i-1], 
-               rvfi_stage_ixl[i], rvfi_stage_ixl_reg_``i)
+  `FATORI_REG_ENUM(CSR_MISA_MXL, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? CSR_MISA_MXL : rvfi_stage_ixl[i-1], rvfi_stage_ixl[i], fi_port, 8'd39, '0, '0, rvfi_stage_ixl_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs1_addr_d : rvfi_stage_rs1_addr[i-1], 
-               rvfi_stage_rs1_addr[i], rvfi_stage_rs1_addr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs1_addr_d : rvfi_stage_rs1_addr[i-1], rvfi_stage_rs1_addr[i], fi_port, 8'd40, '0, '0, rvfi_stage_rs1_addr_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs2_addr_d : rvfi_stage_rs2_addr[i-1], 
-               rvfi_stage_rs2_addr[i], rvfi_stage_rs2_addr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs2_addr_d : rvfi_stage_rs2_addr[i-1], rvfi_stage_rs2_addr[i], fi_port, 8'd41, '0, '0, rvfi_stage_rs2_addr_reg_``i)
                
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs3_addr_d : rvfi_stage_rs3_addr[i-1], 
-               rvfi_stage_rs3_addr[i], rvfi_stage_rs3_addr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs3_addr_d : rvfi_stage_rs3_addr[i-1], rvfi_stage_rs3_addr[i], fi_port, 8'd42, '0, '0, rvfi_stage_rs3_addr_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? pc_id : rvfi_stage_pc_rdata[i-1], 
-               rvfi_stage_pc_rdata[i], rvfi_stage_pc_rdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? pc_id : rvfi_stage_pc_rdata[i-1], rvfi_stage_pc_rdata[i], fi_port, 8'd43, '0, '0, rvfi_stage_pc_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? (pc_set ? branch_target_ex : pc_if) : rvfi_stage_pc_wdata[i-1], 
-               rvfi_stage_pc_wdata[i], rvfi_stage_pc_wdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? (pc_set ? branch_target_ex : pc_if) : rvfi_stage_pc_wdata[i-1], rvfi_stage_pc_wdata[i], fi_port, 8'd44, '0, '0, rvfi_stage_pc_wdata_reg_``i)
                
-  `IOB_REG_TMR(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_mem_mask_int : rvfi_stage_mem_rmask[i-1], 
-               rvfi_stage_mem_rmask[i], rvfi_stage_mem_rmask_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_mem_mask_int : rvfi_stage_mem_rmask[i-1], rvfi_stage_mem_rmask[i], fi_port, 8'd45, '0, '0, rvfi_stage_mem_rmask_reg_``i)
                
-  `IOB_REG_TMR(4,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? (data_we_o ? rvfi_mem_mask_int : 4'b0000) : rvfi_stage_mem_wmask[i-1], 
-               rvfi_stage_mem_wmask[i], rvfi_stage_mem_wmask_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? (data_we_o ? rvfi_mem_mask_int : 4'b0000) : rvfi_stage_mem_wmask[i-1], rvfi_stage_mem_wmask[i], fi_port, 8'd46, '0, '0, rvfi_stage_mem_wmask_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs1_data_d : rvfi_stage_rs1_rdata[i-1], 
-               rvfi_stage_rs1_rdata[i], rvfi_stage_rs1_rdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs1_data_d : rvfi_stage_rs1_rdata[i-1], rvfi_stage_rs1_rdata[i], fi_port, 8'd47, '0, '0, rvfi_stage_rs1_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs2_data_d : rvfi_stage_rs2_rdata[i-1], 
-               rvfi_stage_rs2_rdata[i], rvfi_stage_rs2_rdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs2_data_d : rvfi_stage_rs2_rdata[i-1], rvfi_stage_rs2_rdata[i], fi_port, 8'd48, '0, '0, rvfi_stage_rs2_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_rs3_data_d : rvfi_stage_rs3_rdata[i-1], 
-               rvfi_stage_rs3_rdata[i], rvfi_stage_rs3_rdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_rs3_data_d : rvfi_stage_rs3_rdata[i-1], rvfi_stage_rs3_rdata[i], fi_port, 8'd49, '0, '0, rvfi_stage_rs3_rdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_mem_wdata_d : rvfi_stage_mem_wdata[i-1], 
-               rvfi_stage_mem_wdata[i], rvfi_stage_mem_wdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_mem_wdata_d : rvfi_stage_mem_wdata[i-1], rvfi_stage_mem_wdata[i], fi_port, 8'd50, '0, '0, rvfi_stage_mem_wdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? rvfi_mem_addr_d : rvfi_stage_mem_addr[i-1], 
-               rvfi_stage_mem_addr[i], rvfi_stage_mem_addr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? rvfi_mem_addr_d : rvfi_stage_mem_addr[i-1], rvfi_stage_mem_addr[i], fi_port, 8'd51, '0, '0, rvfi_stage_mem_addr_reg_``i)
   
   // Special case: these three signals always get fresh data in writeback stage (not shifted)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               rvfi_rd_addr_d, 
-               rvfi_stage_rd_addr[i], rvfi_stage_rd_addr_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, rvfi_rd_addr_d, rvfi_stage_rd_addr[i], fi_port, 8'd52, '0, '0, rvfi_stage_rd_addr_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               rvfi_rd_wdata_d, 
-               rvfi_stage_rd_wdata[i], rvfi_stage_rd_wdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, rvfi_rd_wdata_d, rvfi_stage_rd_wdata[i], fi_port, 8'd53, '0, '0, rvfi_stage_rd_wdata_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               rvfi_mem_rdata_d, 
-               rvfi_stage_mem_rdata[i], rvfi_stage_mem_rdata_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, rvfi_mem_rdata_d, rvfi_stage_mem_rdata[i], fi_port, 8'd54, '0, '0, rvfi_stage_mem_rdata_reg_``i)
   
   // Extension signals
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? debug_mode : rvfi_ext_stage_debug_mode[i-1], 
-               rvfi_ext_stage_debug_mode[i], rvfi_ext_stage_debug_mode_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? debug_mode : rvfi_ext_stage_debug_mode[i-1], rvfi_ext_stage_debug_mode[i], fi_port, 8'd55, '0, '0, rvfi_ext_stage_debug_mode_reg_``i)
                
-  `IOB_REG_TMR(64, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? cs_registers_i.mcycle_counter_i.counter_val_o : rvfi_ext_stage_mcycle[i-1], 
-               rvfi_ext_stage_mcycle[i], rvfi_ext_stage_mcycle_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mcycle_counter_i.counter_val_o : rvfi_ext_stage_mcycle[i-1], rvfi_ext_stage_mcycle[i], fi_port, 8'd56, '0, '0, rvfi_ext_stage_mcycle_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-               (i == 0) ? cs_registers_i.cpuctrlsts_ic_scr_key_valid_q : rvfi_ext_stage_ic_scr_key_valid[i-1], 
-               rvfi_ext_stage_ic_scr_key_valid[i], rvfi_ext_stage_ic_scr_key_valid_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.cpuctrlsts_ic_scr_key_valid_q : rvfi_ext_stage_ic_scr_key_valid[i-1], rvfi_ext_stage_ic_scr_key_valid[i], fi_port, 8'd57, '0, '0, rvfi_ext_stage_ic_scr_key_valid_reg_``i)
   
   // HPM counters - need separate instances for each k
-  for (genvar k = 0; k < 10; k = k + 1) begin : g_mhpmcounters
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-                 (i == 0) ? cs_registers_i.mhpmcounter[k+3][31:0] : rvfi_ext_stage_mhpmcounters[i-1][k], 
-                 rvfi_ext_stage_mhpmcounters[i][k], rvfi_ext_stage_mhpmcounters_reg_``i_``k)
-                 
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, 
-                 (i == 0) ? cs_registers_i.mhpmcounter[k+3][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][k], 
-                 rvfi_ext_stage_mhpmcountersh[i][k], rvfi_ext_stage_mhpmcountersh_reg_``i_``k)
-  end
+  // The IDs are out of order, because some changes happened after all the indexing took place
+  // k = 0
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[3][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][0], rvfi_ext_stage_mhpmcounters[i][0],  fi_port, 8'd58, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_0)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[3][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][0], rvfi_ext_stage_mhpmcountersh[i][0], fi_port, 8'd59, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_0)
+
+  // k = 1
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[4][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][1], rvfi_ext_stage_mhpmcounters[i][1],  fi_port, 8'd169, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_1)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[4][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][1], rvfi_ext_stage_mhpmcountersh[i][1], fi_port, 8'd178, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_1)
+
+  // k = 2
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[5][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][2], rvfi_ext_stage_mhpmcounters[i][2],  fi_port, 8'd170, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_2)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[5][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][2], rvfi_ext_stage_mhpmcountersh[i][2], fi_port, 8'd179, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_2)
+
+  // k = 3
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[6][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][3], rvfi_ext_stage_mhpmcounters[i][3],  fi_port, 8'd171, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_3)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[6][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][3], rvfi_ext_stage_mhpmcountersh[i][3], fi_port, 8'd180, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_3)
+
+  // k = 4
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[7][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][4], rvfi_ext_stage_mhpmcounters[i][4],  fi_port, 8'd172, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_4)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[7][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][4], rvfi_ext_stage_mhpmcountersh[i][4], fi_port, 8'd181, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_4)
+
+  // k = 5
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[8][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][5], rvfi_ext_stage_mhpmcounters[i][5],  fi_port, 8'd173, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_5)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[8][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][5], rvfi_ext_stage_mhpmcountersh[i][5], fi_port, 8'd182, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_5)
+
+  // k = 6
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[9][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][6], rvfi_ext_stage_mhpmcounters[i][6],  fi_port, 8'd174, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_6)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[9][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][6], rvfi_ext_stage_mhpmcountersh[i][6], fi_port, 8'd183, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_6)
+
+  // k = 7
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[10][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][7], rvfi_ext_stage_mhpmcounters[i][7],  fi_port, 8'd175, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_7)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[10][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][7], rvfi_ext_stage_mhpmcountersh[i][7], fi_port, 8'd184, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_7)
+
+  // k = 8
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[11][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][8], rvfi_ext_stage_mhpmcounters[i][8],  fi_port, 8'd176, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_8)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[11][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][8], rvfi_ext_stage_mhpmcountersh[i][8], fi_port, 8'd185, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_8)
+
+  // k = 9
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[12][31:0]  : rvfi_ext_stage_mhpmcounters[i-1][9], rvfi_ext_stage_mhpmcounters[i][9],  fi_port, 8'd177, '0, '0, rvfi_ext_stage_mhpmcounters_reg_``i_9)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? rvfi_id_done : rvfi_wb_done, (i == 0) ? cs_registers_i.mhpmcounter[12][63:32] : rvfi_ext_stage_mhpmcountersh[i-1][9], rvfi_ext_stage_mhpmcountersh[i][9], fi_port, 8'd186, '0, '0, rvfi_ext_stage_mhpmcountersh_reg_``i_9)
+
   
   // rvfi_stage_valid has its own logic independent of stage number
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, 1'b1, rvfi_stage_valid_d[i], rvfi_stage_valid[i], rvfi_stage_valid_reg_``i)
+  `FATORI_REG('0, !rst_ni, 1'b1, rvfi_stage_valid_d[i], rvfi_stage_valid[i], fi_port, 8'd60, '0, '0, rvfi_stage_valid_reg_``i)
   
   // Some of the rvfi_ext_* signals are used to provide an interrupt notification (signalled
   // via rvfi_ext_irq_valid) when there isn't a valid retired instruction as well as
   // providing information along with a retired instruction. Move these up the rvfi pipeline
   // for both cases.
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
-               (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
-               rvfi_ext_stage_pre_mip[i], 
-               rvfi_ext_stage_pre_mip[i+1], rvfi_ext_stage_pre_mip_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), rvfi_ext_stage_pre_mip[i], rvfi_ext_stage_pre_mip[i+1], fi_port, 8'd61, '0, '0, rvfi_ext_stage_pre_mip_reg_``i)
                
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, 
-               (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
-               (i == 0) ? cs_registers_i.mip : rvfi_ext_stage_post_mip[i-1], 
-               rvfi_ext_stage_post_mip[i], rvfi_ext_stage_post_mip_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), (i == 0) ? cs_registers_i.mip : rvfi_ext_stage_post_mip[i-1], rvfi_ext_stage_post_mip[i], fi_port, 8'd62, '0, '0, rvfi_ext_stage_post_mip_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
-               (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
-               rvfi_ext_stage_nmi[i], 
-               rvfi_ext_stage_nmi[i+1], rvfi_ext_stage_nmi_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), rvfi_ext_stage_nmi[i], rvfi_ext_stage_nmi[i+1], fi_port, 8'd63, '0, '0, rvfi_ext_stage_nmi_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
-               (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
-               rvfi_ext_stage_nmi_int[i], 
-               rvfi_ext_stage_nmi_int[i+1], rvfi_ext_stage_nmi_int_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), rvfi_ext_stage_nmi_int[i], rvfi_ext_stage_nmi_int[i+1], fi_port, 8'd64, '0, '0, rvfi_ext_stage_nmi_int_reg_``i)
                
-  `IOB_REG_TMR(1,  '0, '0, !rst_ni, 
-               (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), 
-               rvfi_ext_stage_debug_req[i], 
-               rvfi_ext_stage_debug_req[i+1], rvfi_ext_stage_debug_req_reg_``i)
+  `FATORI_REG('0, !rst_ni, (i == 0) ? (rvfi_id_done | rvfi_ext_stage_irq_valid[i]) : (rvfi_wb_done | rvfi_ext_stage_irq_valid[i]), rvfi_ext_stage_debug_req[i], rvfi_ext_stage_debug_req[i+1], fi_port, 8'd65, '0, '0, rvfi_ext_stage_debug_req_reg_``i)
   
 end
 
@@ -1922,9 +2199,9 @@ end
     end
   end
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_addr_d,  rvfi_mem_addr_q,  rvfi_mem_addr)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_rdata_d, rvfi_mem_rdata_q, rvfi_mem_rdata)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_mem_wdata_d, rvfi_mem_wdata_q, rvfi_mem_wdata)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_mem_addr_d, rvfi_mem_addr_q, fi_port, 8'd66, '0, '0, rvfi_mem_addr)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_mem_rdata_d, rvfi_mem_rdata_q, fi_port, 8'd67, '0, '0, rvfi_mem_rdata)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_mem_wdata_d, rvfi_mem_wdata_q, fi_port, 8'd68, '0, '0, rvfi_mem_wdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_mem_addr_q  <= '0;
@@ -1976,10 +2253,10 @@ end
   end
 
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rs1_data_d, rvfi_rs1_data_q, rvfi_rs1_data)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rs1_addr_d, rvfi_rs1_addr_q, rvfi_rs1_addr)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rs2_data_d, rvfi_rs2_data_q, rvfi_rs2_data)
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rs2_addr_d, rvfi_rs2_addr_q, rvfi_rs2_addr)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rs1_data_d, rvfi_rs1_data_q, fi_port, 8'd69, '0, '0, rvfi_rs1_data)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rs1_addr_d, rvfi_rs1_addr_q, fi_port, 8'd70, '0, '0, rvfi_rs1_addr)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rs2_data_d, rvfi_rs2_data_q, fi_port, 8'd71, '0, '0, rvfi_rs2_data)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rs2_addr_d, rvfi_rs2_addr_q, fi_port, 8'd72, '0, '0, rvfi_rs2_addr)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_rs1_data_q <= '0;
@@ -2019,8 +2296,8 @@ end
 
   // RD write register is refreshed only once per cycle and
   // then it is kept stable for the cycle.
-  `IOB_REG_TMR(5,  '0, '0, !rst_ni, '1, rvfi_rd_addr_d,  rvfi_rd_addr_q,  rvfi_rd_addr_q)
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, rvfi_rd_wdata_d, rvfi_rd_wdata_q, rvfi_rd_wdata_q)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rd_addr_d, rvfi_rd_addr_q, fi_port, 8'd73, '0, '0, rvfi_rd_addr_q)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_rd_wdata_d, rvfi_rd_wdata_q, fi_port, 8'd74, '0, '0, rvfi_rd_wdata_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -2071,8 +2348,8 @@ end
     end
   end
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, rvfi_set_trap_pc_d, rvfi_set_trap_pc_q, rvfi_set_trap_pc)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, rvfi_intr_d,        rvfi_intr_q,        rvfi_intr)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_set_trap_pc_d, rvfi_set_trap_pc_q, fi_port, 8'd75, '0, '0, rvfi_set_trap_pc)
+  `FATORI_REG('0, !rst_ni, '1, rvfi_intr_d, rvfi_intr_q, fi_port, 8'd76, '0, '0, rvfi_intr)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rvfi_set_trap_pc_q <= 1'b0;
@@ -2091,7 +2368,7 @@ end
 `endif
 
   // Certain parameter combinations are not supported
-  `ASSERT_INIT(IllegalParamSecure, !(`FTM_DUMMY_INSTR && (RV32M == RV32MNone)))
+  `ASSERT_INIT(IllegalParamSecure, !(`FATORI_DUMMY_INSTR && (RV32M == RV32MNone)))
 
   // If the ID stage signals its ready the mult/div FSMs must be idle in the following cycle
   `ASSERT(MultDivFSMIdleOnIdReady, id_in_ready |=> ex_block_i.sva_multdiv_fsm_idle)
@@ -2127,10 +2404,22 @@ end
                                                fcov_pmp_region_dchan_priority};
 
     for (genvar i_region = 0; i_region < PMPNumRegions; i_region += 1) begin : g_pmp_region_fcov
-      `DV_FCOV_SIGNAL(logic, pmp_region_ichan_access,
-          g_pmp.pmp_i.region_match_all[PMP_I][i_region] & if_stage_i.if_id_pipe_reg_we)
-      `DV_FCOV_SIGNAL(logic, pmp_region_ichan2_access,
-          g_pmp.pmp_i.region_match_all[PMP_I2][i_region] & if_stage_i.if_id_pipe_reg_we)
+
+      if (`IFSTAGE_MON_N > 1) begin: g_if_cov
+        `DV_FCOV_SIGNAL(logic, pmp_region_ichan_access,
+            g_pmp.pmp_i.region_match_all[PMP_I][i_region] & g_if_mon.if_stage_mon.gen_reps[0].u_if.if_id_pipe_reg_we)
+
+        `DV_FCOV_SIGNAL(logic, pmp_region_ichan2_access,
+            g_pmp.pmp_i.region_match_all[PMP_I2][i_region] & g_if_mon.if_stage_mon.gen_reps[0].u_if.if_id_pipe_reg_we)
+
+      end else begin: g_if_cov_single
+        `DV_FCOV_SIGNAL(logic, pmp_region_ichan_access,
+            g_pmp.pmp_i.region_match_all[PMP_I][i_region] & g_if_single.if_stage_i.if_id_pipe_reg_we)
+
+        `DV_FCOV_SIGNAL(logic, pmp_region_ichan2_access,
+            g_pmp.pmp_i.region_match_all[PMP_I2][i_region] & g_if_single.if_stage_i.if_id_pipe_reg_we)
+      end
+
       `DV_FCOV_SIGNAL(logic, pmp_region_dchan_access,
           g_pmp.pmp_i.region_match_all[PMP_D][i_region] & data_req_out)
       // pmp_cfg[5:6] is reserved and because of that the width of it inside cs_registers module
@@ -2166,5 +2455,369 @@ end
     end
   end
 `endif
+
+// ============================================================
+  // Error Aggregation (OR own registers + children)
+  // ============================================================
+  
+  // Own registers - non-loop registers (18 with RVFI+INC_ASSERT, 16 with RVFI only, 0 without RVFI)
+  logic own_maj_err, own_min_err, own_scrub_occurred;
+`ifdef RVFI
+  // Include all RVFI register error signals
+  `ifdef INC_ASSERT
+    assign own_maj_err = last_fetch_enable_new_maj_err |
+                         pc_at_fetch_disable_new_maj_err |
+                         rvfi_instr_new_wb_q_new_maj_err |
+  `else
+    assign own_maj_err = rvfi_instr_new_wb_q_new_maj_err |
+  `endif
+                       rvfi_ext_stage_pre_mip_0_new_maj_err |
+                       rvfi_ext_stage_nmi_0_new_maj_err |
+                       rvfi_ext_stage_nmi_int_0_new_maj_err |
+                       rvfi_ext_stage_debug_req_0_new_maj_err |
+                       rvfi_mem_addr_new_maj_err |
+                       rvfi_mem_rdata_new_maj_err |
+                       rvfi_mem_wdata_new_maj_err |
+                       rvfi_rs1_data_new_maj_err |
+                       rvfi_rs1_addr_new_maj_err |
+                       rvfi_rs2_data_new_maj_err |
+                       rvfi_rs2_addr_new_maj_err |
+                       rvfi_rd_addr_q_new_maj_err |
+                       rvfi_rd_wdata_q_new_maj_err |
+                       rvfi_set_trap_pc_new_maj_err |
+                       rvfi_intr_new_maj_err;
+  
+  `ifdef INC_ASSERT
+    assign own_min_err = last_fetch_enable_new_min_err |
+                         pc_at_fetch_disable_new_min_err |
+                         rvfi_instr_new_wb_q_new_min_err |
+  `else
+    assign own_min_err = rvfi_instr_new_wb_q_new_min_err |
+  `endif
+                       rvfi_ext_stage_pre_mip_0_new_min_err |
+                       rvfi_ext_stage_nmi_0_new_min_err |
+                       rvfi_ext_stage_nmi_int_0_new_min_err |
+                       rvfi_ext_stage_debug_req_0_new_min_err |
+                       rvfi_mem_addr_new_min_err |
+                       rvfi_mem_rdata_new_min_err |
+                       rvfi_mem_wdata_new_min_err |
+                       rvfi_rs1_data_new_min_err |
+                       rvfi_rs1_addr_new_min_err |
+                       rvfi_rs2_data_new_min_err |
+                       rvfi_rs2_addr_new_min_err |
+                       rvfi_rd_addr_q_new_min_err |
+                       rvfi_rd_wdata_q_new_min_err |
+                       rvfi_set_trap_pc_new_min_err |
+                       rvfi_intr_new_min_err;
+  
+  `ifdef INC_ASSERT
+    assign own_scrub_occurred = last_fetch_enable_scrub_occurred |
+                                 pc_at_fetch_disable_scrub_occurred |
+                                 rvfi_instr_new_wb_q_scrub_occurred |
+  `else
+    assign own_scrub_occurred = rvfi_instr_new_wb_q_scrub_occurred |
+  `endif
+                               rvfi_ext_stage_pre_mip_0_scrub_occurred |
+                               rvfi_ext_stage_nmi_0_scrub_occurred |
+                               rvfi_ext_stage_nmi_int_0_scrub_occurred |
+                               rvfi_ext_stage_debug_req_0_scrub_occurred |
+                               rvfi_mem_addr_scrub_occurred |
+                               rvfi_mem_rdata_scrub_occurred |
+                               rvfi_mem_wdata_scrub_occurred |
+                               rvfi_rs1_data_scrub_occurred |
+                               rvfi_rs1_addr_scrub_occurred |
+                               rvfi_rs2_data_scrub_occurred |
+                               rvfi_rs2_addr_scrub_occurred |
+                               rvfi_rd_addr_q_scrub_occurred |
+                               rvfi_rd_wdata_q_scrub_occurred |
+                               rvfi_set_trap_pc_scrub_occurred |
+                               rvfi_intr_scrub_occurred;
+`else
+  // Only non-RVFI registers when RVFI disabled
+  `ifdef INC_ASSERT
+    assign own_maj_err = last_fetch_enable_new_maj_err |
+                         pc_at_fetch_disable_new_maj_err;
+    
+    assign own_min_err = last_fetch_enable_new_min_err |
+                         pc_at_fetch_disable_new_min_err;
+    
+    assign own_scrub_occurred = last_fetch_enable_scrub_occurred |
+                                 pc_at_fetch_disable_scrub_occurred;
+  `else
+    // No own registers when neither RVFI nor INC_ASSERT are defined
+    assign own_maj_err = 1'b0;
+    assign own_min_err = 1'b0;
+    assign own_scrub_occurred = 1'b0;
+  `endif
+`endif
+  
+  // Own registers - loop-generated (63 registers when RVFI enabled, 0 otherwise)
+  logic rvfi_loop_maj_err, rvfi_loop_min_err, rvfi_loop_scrub_occurred;
+`ifdef RVFI
+  // Aggregate all loop-generated RVFI registers across all RVFI_STAGES iterations
+  generate
+    for (genvar i = 0; i < RVFI_STAGES; i++) begin : g_rvfi_err_agg
+      // Intermediate OR signals for this iteration
+      logic stage_maj_err, stage_min_err, stage_scrub_occurred;
+      logic ext_stage_maj_err, ext_stage_min_err, ext_stage_scrub_occurred;
+
+      assign stage_scrub_occurred = 
+        rvfi_stage_valid_reg_``i_scrub_occurred |
+        rvfi_stage_order_reg_``i_scrub_occurred |
+        rvfi_stage_insn_reg_``i_scrub_occurred |
+        rvfi_stage_trap_reg_``i_scrub_occurred |
+        rvfi_stage_halt_reg_``i_scrub_occurred |
+        rvfi_stage_intr_reg_``i_scrub_occurred |
+        rvfi_stage_mode_reg_``i_scrub_occurred |
+        rvfi_stage_ixl_reg_``i_scrub_occurred |
+        rvfi_stage_rs1_addr_reg_``i_scrub_occurred |
+        rvfi_stage_rs1_rdata_reg_``i_scrub_occurred |
+        rvfi_stage_rs2_addr_reg_``i_scrub_occurred |
+        rvfi_stage_rs2_rdata_reg_``i_scrub_occurred |
+        rvfi_stage_rs3_addr_reg_``i_scrub_occurred |
+        rvfi_stage_rs3_rdata_reg_``i_scrub_occurred |
+        rvfi_stage_rd_addr_reg_``i_scrub_occurred |
+        rvfi_stage_rd_wdata_reg_``i_scrub_occurred |
+        rvfi_stage_pc_rdata_reg_``i_scrub_occurred |
+        rvfi_stage_pc_wdata_reg_``i_scrub_occurred |
+        rvfi_stage_mem_addr_reg_``i_scrub_occurred |
+        rvfi_stage_mem_rmask_reg_``i_scrub_occurred |
+        rvfi_stage_mem_wmask_reg_``i_scrub_occurred |
+        rvfi_stage_mem_rdata_reg_``i_scrub_occurred |
+        rvfi_stage_mem_wdata_reg_``i_scrub_occurred;
+      
+      // rvfi_stage_* registers (23 patterns)
+      assign stage_maj_err = 
+        rvfi_stage_valid_reg_``i_new_maj_err |
+        rvfi_stage_order_reg_``i_new_maj_err |
+        rvfi_stage_insn_reg_``i_new_maj_err |
+        rvfi_stage_trap_reg_``i_new_maj_err |
+        rvfi_stage_halt_reg_``i_new_maj_err |
+        rvfi_stage_intr_reg_``i_new_maj_err |
+        rvfi_stage_mode_reg_``i_new_maj_err |
+        rvfi_stage_ixl_reg_``i_new_maj_err |
+        rvfi_stage_rs1_addr_reg_``i_new_maj_err |
+        rvfi_stage_rs1_rdata_reg_``i_new_maj_err |
+        rvfi_stage_rs2_addr_reg_``i_new_maj_err |
+        rvfi_stage_rs2_rdata_reg_``i_new_maj_err |
+        rvfi_stage_rs3_addr_reg_``i_new_maj_err |
+        rvfi_stage_rs3_rdata_reg_``i_new_maj_err |
+        rvfi_stage_rd_addr_reg_``i_new_maj_err |
+        rvfi_stage_rd_wdata_reg_``i_new_maj_err |
+        rvfi_stage_pc_rdata_reg_``i_new_maj_err |
+        rvfi_stage_pc_wdata_reg_``i_new_maj_err |
+        rvfi_stage_mem_addr_reg_``i_new_maj_err |
+        rvfi_stage_mem_rmask_reg_``i_new_maj_err |
+        rvfi_stage_mem_wmask_reg_``i_new_maj_err |
+        rvfi_stage_mem_rdata_reg_``i_new_maj_err |
+        rvfi_stage_mem_wdata_reg_``i_new_maj_err;
+      
+      assign stage_min_err = 
+        rvfi_stage_valid_reg_``i_new_min_err |
+        rvfi_stage_order_reg_``i_new_min_err |
+        rvfi_stage_insn_reg_``i_new_min_err |
+        rvfi_stage_trap_reg_``i_new_min_err |
+        rvfi_stage_halt_reg_``i_new_min_err |
+        rvfi_stage_intr_reg_``i_new_min_err |
+        rvfi_stage_mode_reg_``i_new_min_err |
+        rvfi_stage_ixl_reg_``i_new_min_err |
+        rvfi_stage_rs1_addr_reg_``i_new_min_err |
+        rvfi_stage_rs1_rdata_reg_``i_new_min_err |
+        rvfi_stage_rs2_addr_reg_``i_new_min_err |
+        rvfi_stage_rs2_rdata_reg_``i_new_min_err |
+        rvfi_stage_rs3_addr_reg_``i_new_min_err |
+        rvfi_stage_rs3_rdata_reg_``i_new_min_err |
+        rvfi_stage_rd_addr_reg_``i_new_min_err |
+        rvfi_stage_rd_wdata_reg_``i_new_min_err |
+        rvfi_stage_pc_rdata_reg_``i_new_min_err |
+        rvfi_stage_pc_wdata_reg_``i_new_min_err |
+        rvfi_stage_mem_addr_reg_``i_new_min_err |
+        rvfi_stage_mem_rmask_reg_``i_new_min_err |
+        rvfi_stage_mem_wmask_reg_``i_new_min_err |
+        rvfi_stage_mem_rdata_reg_``i_new_min_err |
+        rvfi_stage_mem_wdata_reg_``i_new_min_err;
+      
+      // rvfi_ext_stage_* registers (29 patterns: 9 simple + 10 mhpmcounters + 10 mhpmcountersh)
+      assign ext_stage_maj_err = 
+        rvfi_ext_stage_pre_mip_reg_``i_new_maj_err |
+        rvfi_ext_stage_post_mip_reg_``i_new_maj_err |
+        rvfi_ext_stage_nmi_reg_``i_new_maj_err |
+        rvfi_ext_stage_nmi_int_reg_``i_new_maj_err |
+        rvfi_ext_stage_debug_req_reg_``i_new_maj_err |
+        rvfi_ext_stage_debug_mode_reg_``i_new_maj_err |
+        rvfi_ext_stage_mcycle_reg_``i_new_maj_err |
+        rvfi_ext_stage_ic_scr_key_valid_reg_``i_new_maj_err |
+        rvfi_ext_stage_irq_valid_``i_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_0_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_1_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_2_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_3_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_4_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_5_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_6_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_7_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_8_new_maj_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_9_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_0_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_1_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_2_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_3_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_4_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_5_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_6_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_7_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_8_new_maj_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_9_new_maj_err;
+      
+      assign ext_stage_min_err = 
+        rvfi_ext_stage_pre_mip_reg_``i_new_min_err |
+        rvfi_ext_stage_post_mip_reg_``i_new_min_err |
+        rvfi_ext_stage_nmi_reg_``i_new_min_err |
+        rvfi_ext_stage_nmi_int_reg_``i_new_min_err |
+        rvfi_ext_stage_debug_req_reg_``i_new_min_err |
+        rvfi_ext_stage_debug_mode_reg_``i_new_min_err |
+        rvfi_ext_stage_mcycle_reg_``i_new_min_err |
+        rvfi_ext_stage_ic_scr_key_valid_reg_``i_new_min_err |
+        rvfi_ext_stage_irq_valid_``i_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_0_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_1_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_2_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_3_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_4_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_5_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_6_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_7_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_8_new_min_err |
+        rvfi_ext_stage_mhpmcounters_reg_``i_9_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_0_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_1_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_2_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_3_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_4_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_5_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_6_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_7_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_8_new_min_err |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_9_new_min_err;
+
+        assign ext_stage_scrub_occurred = 
+        rvfi_ext_stage_pre_mip_``i_scrub_occurred |
+        rvfi_ext_stage_nmi_``i_scrub_occurred |
+        rvfi_ext_stage_nmi_int_``i_scrub_occurred |
+        rvfi_ext_stage_debug_req_``i_scrub_occurred |
+        rvfi_ext_stage_mcycle_reg_``i_scrub_occurred |
+        rvfi_ext_stage_minstret_reg_``i_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_0_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_1_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_2_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_3_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_4_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_5_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_6_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_7_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_8_scrub_occurred |
+        rvfi_ext_stage_mhpmcounters_reg_``i_9_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_0_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_1_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_2_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_3_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_4_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_5_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_6_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_7_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_8_scrub_occurred |
+        rvfi_ext_stage_mhpmcountersh_reg_``i_9_scrub_occurred;
+    end
+  endgenerate
+  
+  // OR all iterations together
+  logic [RVFI_STAGES-1:0] all_stage_maj_err, all_stage_min_err;
+  logic [RVFI_STAGES-1:0] all_ext_stage_maj_err, all_ext_stage_min_err;
+  logic [RVFI_STAGES-1:0] all_stage_scrub, all_ext_stage_scrub;
+  
+  generate
+    for (genvar i = 0; i < RVFI_STAGES; i++) begin : g_rvfi_err_collect
+      assign all_stage_maj_err[i] = g_rvfi_err_agg[i].stage_maj_err;
+      assign all_stage_min_err[i] = g_rvfi_err_agg[i].stage_min_err;
+      assign all_ext_stage_maj_err[i] = g_rvfi_err_agg[i].ext_stage_maj_err;
+      assign all_ext_stage_min_err[i] = g_rvfi_err_agg[i].ext_stage_min_err;
+      assign all_stage_scrub[i] = g_rvfi_err_agg[i].stage_scrub_occurred;
+      assign all_ext_stage_scrub[i] = g_rvfi_err_agg[i].ext_stage_scrub_occurred;
+    end
+  endgenerate
+  
+  assign rvfi_loop_maj_err = |all_stage_maj_err | |all_ext_stage_maj_err;
+  assign rvfi_loop_min_err = |all_stage_min_err | |all_ext_stage_min_err;
+  assign rvfi_loop_scrub_occurred = |all_stage_scrub | |all_ext_stage_scrub;
+`else
+  // When RVFI is not defined, no loop-generated registers exist
+  assign rvfi_loop_maj_err = 1'b0;
+  assign rvfi_loop_min_err = 1'b0;
+  assign rvfi_loop_scrub_occurred = 1'b0;
+`endif
+  
+  // Child modules - conditionally include IF_STAGE and LSU based on wrapper usage
+  logic children_maj_err, children_min_err, children_scrub_occurred;
+  generate
+    if (`IFSTAGE_MON_N > 1 && `LSU_MON_N > 1) begin : g_err_both_wrapped
+      // Both IF_STAGE and LSU are wrapped
+      assign children_maj_err = g_if_mon.if_stage_new_maj_err |
+                                id_stage_new_maj_err |
+                                g_lsu_mon.lsu_new_maj_err |
+                                wb_stage_new_maj_err |
+                                cs_registers_new_maj_err;
+      assign children_min_err = g_if_mon.if_stage_new_min_err |
+                                id_stage_new_min_err |
+                                g_lsu_mon.lsu_new_min_err |
+                                wb_stage_new_min_err |
+                                cs_registers_new_min_err;
+      assign children_scrub_occurred = g_lsu_mon.lsu_scrub_occurred;
+    end else if (`IFSTAGE_MON_N > 1) begin : g_err_if_wrapped
+      // Only IF_STAGE is wrapped
+      assign children_maj_err = g_if_mon.if_stage_new_maj_err |
+                                id_stage_new_maj_err |
+                                g_lsu_single.lsu_new_maj_err |
+                                wb_stage_new_maj_err |
+                                cs_registers_new_maj_err;
+      assign children_min_err = g_if_mon.if_stage_new_min_err |
+                                id_stage_new_min_err |
+                                g_lsu_single.lsu_new_min_err |
+                                wb_stage_new_min_err |
+                                cs_registers_new_min_err;
+      assign children_scrub_occurred = g_lsu_single.lsu_scrub_occurred;
+    end else if (`LSU_MON_N > 1) begin : g_err_lsu_wrapped
+      // Only LSU is wrapped
+      assign children_maj_err = if_stage_new_maj_err |
+                                id_stage_new_maj_err |
+                                g_lsu_mon.lsu_new_maj_err |
+                                wb_stage_new_maj_err |
+                                cs_registers_new_maj_err;
+      assign children_min_err = if_stage_new_min_err |
+                                id_stage_new_min_err |
+                                g_lsu_mon.lsu_new_min_err |
+                                wb_stage_new_min_err |
+                                cs_registers_new_min_err;
+      assign children_scrub_occurred = g_lsu_mon.lsu_scrub_occurred;
+    end else begin : g_err_none_wrapped
+      // Neither IF_STAGE nor LSU is wrapped
+      assign children_maj_err = if_stage_new_maj_err |
+                                id_stage_new_maj_err |
+                                g_lsu_single.lsu_new_maj_err |
+                                wb_stage_new_maj_err |
+                                cs_registers_new_maj_err;
+      assign children_min_err = if_stage_new_min_err |
+                                id_stage_new_min_err |
+                                g_lsu_single.lsu_new_min_err |
+                                wb_stage_new_min_err |
+                                cs_registers_new_min_err;
+      assign children_scrub_occurred = g_lsu_single.lsu_scrub_occurred;
+    end
+  endgenerate
+  
+  // Final aggregation
+  assign core_new_maj_err_o = own_maj_err | children_maj_err | rvfi_loop_maj_err;
+  assign core_new_min_err_o = own_min_err | children_min_err | rvfi_loop_min_err;
+  
+  assign core_scrub_occurred_o = own_scrub_occurred | children_scrub_occurred | rvfi_loop_scrub_occurred;
 
 endmodule

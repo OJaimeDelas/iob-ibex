@@ -108,9 +108,21 @@ module ibex_controller #(
   // performance monitors
   output logic                  perf_jump_o,             // we are executing a jump
                                                          // instruction (j, jr, jal, jalr)
-  output logic                  perf_tbranch_o           // we are executing a taken branch
+  output logic                  perf_tbranch_o,          // we are executing a taken branch
                                                          // instruction
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                  controller_new_maj_err_o,
+  output logic                  controller_new_min_err_o,
+  output logic                  controller_scrub_occurred_o
+
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif      
+
 );
+
   import ibex_pkg::*;
 
   ctrl_fsm_e ctrl_fsm_cs, ctrl_fsm_ns;
@@ -340,8 +352,8 @@ module ibex_controller #(
     assign mem_resp_intg_err_irq_pending_d =
       (mem_resp_intg_err_irq_pending_q & ~mem_resp_intg_err_irq_clear) | mem_resp_intg_err_irq_set;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, mem_resp_intg_err_irq_pending_d, mem_resp_intg_err_irq_pending_q, mem_resp_intg_err_irq_pending_q)
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, mem_resp_intg_err_addr_q)
+    `FATORI_REG('0, !rst_ni, '1, mem_resp_intg_err_irq_pending_d, mem_resp_intg_err_irq_pending_q, fi_port, 8'd7, '0, '0, mem_resp_intg_err_irq_pending_q)
+    `FATORI_REG('0, !rst_ni, '1, mem_resp_intg_err_addr_d, mem_resp_intg_err_addr_q, fi_port, 8'd8, '0, '0, mem_resp_intg_err_addr_q)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     mem_resp_intg_err_irq_pending_q <= 1'b0;
@@ -438,7 +450,8 @@ module ibex_controller #(
                          do_single_step_d                   ? DBG_CAUSE_STEP    :
                                                               DBG_CAUSE_NONE ;
                                                               
-  `IOB_REG_TMR_ENUM(dbg_cause_e, DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, debug_cause_q)
+  `FATORI_REG_ENUM(dbg_cause_e,DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, fi_port, 8'd9, '0, '0, debug_cause_q)
+  //`FATORI_REG(DBG_CAUSE_NONE, !rst_ni, '1, debug_cause_d, debug_cause_q, fi_port, 8'd9, '0, '0, debug_cause_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -876,15 +889,16 @@ module ibex_controller #(
 
   // update registers
 
-  `IOB_REG_TMR_ENUM(ctrl_fsm_e, RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, ctrl_fsm_cs)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, nmi_mode_d, nmi_mode_q, nmi_mode_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, do_single_step_d, do_single_step_q, do_single_step_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, debug_mode_d, debug_mode_q, debug_mode_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, enter_debug_mode_prio_d, enter_debug_mode_prio_q, enter_debug_mode_prio_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, load_err_d, load_err_q, load_err_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, store_err_d, store_err_q, store_err_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, exc_req_d, exc_req_q, exc_req_q)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, illegal_insn_d, illegal_insn_q, illegal_insn_q)
+  `FATORI_REG_ENUM(ctrl_fsm_e, RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, fi_port, 8'd10, '0, '0, ctrl_fsm_cs)
+  //`FATORI_REG(RESET, !rst_ni, '1, ctrl_fsm_ns, ctrl_fsm_cs, fi_port, 8'd10, '0, '0, ctrl_fsm_cs)
+  `FATORI_REG('0, !rst_ni, '1, nmi_mode_d, nmi_mode_q, fi_port, 8'd11, '0, '0, nmi_mode_q)
+  `FATORI_REG('0, !rst_ni, '1, do_single_step_d, do_single_step_q, fi_port, 8'd12, '0, '0, do_single_step_q)
+  `FATORI_REG('0, !rst_ni, '1, debug_mode_d, debug_mode_q, fi_port, 8'd13, '0, '0, debug_mode_q)
+  `FATORI_REG('0, !rst_ni, '1, enter_debug_mode_prio_d, enter_debug_mode_prio_q, fi_port, 8'd14, '0, '0, enter_debug_mode_prio_q)
+  `FATORI_REG('0, !rst_ni, '1, load_err_d, load_err_q, fi_port, 8'd15, '0, '0, load_err_q)
+  `FATORI_REG('0, !rst_ni, '1, store_err_d, store_err_q, fi_port, 8'd16, '0, '0, store_err_q)
+  `FATORI_REG('0, !rst_ni, '1, exc_req_d, exc_req_q, fi_port, 8'd17, '0, '0, exc_req_q)
+  `FATORI_REG('0, !rst_ni, '1, illegal_insn_d, illegal_insn_q, fi_port, 8'd18, '0, '0, illegal_insn_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin : update_regs
   //   if (!rst_ni) begin
@@ -1021,4 +1035,85 @@ module ibex_controller #(
 
     assign rvfi_flush_next = ctrl_fsm_ns == FLUSH;
   `endif
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  generate
+  if (MemECC) begin : g_err_agg_with_ecc
+    // Use hierarchical references since these signals are inside g_intg_irq_int
+    assign controller_new_maj_err_o = g_intg_irq_int.mem_resp_intg_err_irq_pending_q_new_maj_err |
+                                       g_intg_irq_int.mem_resp_intg_err_addr_q_new_maj_err |
+                                       debug_cause_q_new_maj_err |
+                                       ctrl_fsm_cs_new_maj_err |
+                                       nmi_mode_q_new_maj_err |
+                                       do_single_step_q_new_maj_err |
+                                       debug_mode_q_new_maj_err |
+                                       enter_debug_mode_prio_q_new_maj_err |
+                                       load_err_q_new_maj_err |
+                                       store_err_q_new_maj_err |
+                                       exc_req_q_new_maj_err |
+                                       illegal_insn_q_new_maj_err;
+    
+    assign controller_new_min_err_o = g_intg_irq_int.mem_resp_intg_err_irq_pending_q_new_min_err |
+                                       g_intg_irq_int.mem_resp_intg_err_addr_q_new_min_err |
+                                       debug_cause_q_new_min_err |
+                                       ctrl_fsm_cs_new_min_err |
+                                       nmi_mode_q_new_min_err |
+                                       do_single_step_q_new_min_err |
+                                       debug_mode_q_new_min_err |
+                                       enter_debug_mode_prio_q_new_min_err |
+                                       load_err_q_new_min_err |
+                                       store_err_q_new_min_err |
+                                       exc_req_q_new_min_err |
+                                       illegal_insn_q_new_min_err;
+    
+    assign controller_scrub_occurred_o = g_intg_irq_int.mem_resp_intg_err_irq_pending_q_scrub_occurred |
+                                          g_intg_irq_int.mem_resp_intg_err_addr_q_scrub_occurred |
+                                          debug_cause_q_scrub_occurred |
+                                          ctrl_fsm_cs_scrub_occurred |
+                                          nmi_mode_q_scrub_occurred |
+                                          do_single_step_q_scrub_occurred |
+                                          debug_mode_q_scrub_occurred |
+                                          enter_debug_mode_prio_q_scrub_occurred |
+                                          load_err_q_scrub_occurred |
+                                          store_err_q_scrub_occurred |
+                                          exc_req_q_scrub_occurred |
+                                          illegal_insn_q_scrub_occurred;
+  end else begin : g_err_agg_no_ecc
+    // (no changes needed here - other registers are at module scope)
+    assign controller_new_maj_err_o = debug_cause_q_new_maj_err |
+                                       ctrl_fsm_cs_new_maj_err |
+                                       nmi_mode_q_new_maj_err |
+                                       do_single_step_q_new_maj_err |
+                                       debug_mode_q_new_maj_err |
+                                       enter_debug_mode_prio_q_new_maj_err |
+                                       load_err_q_new_maj_err |
+                                       store_err_q_new_maj_err |
+                                       exc_req_q_new_maj_err |
+                                       illegal_insn_q_new_maj_err;
+    
+    assign controller_new_min_err_o = debug_cause_q_new_min_err |
+                                       ctrl_fsm_cs_new_min_err |
+                                       nmi_mode_q_new_min_err |
+                                       do_single_step_q_new_min_err |
+                                       debug_mode_q_new_min_err |
+                                       enter_debug_mode_prio_q_new_min_err |
+                                       load_err_q_new_min_err |
+                                       store_err_q_new_min_err |
+                                       exc_req_q_new_min_err |
+                                       illegal_insn_q_new_min_err;
+    
+    assign controller_scrub_occurred_o = debug_cause_q_scrub_occurred |
+                                          ctrl_fsm_cs_scrub_occurred |
+                                          nmi_mode_q_scrub_occurred |
+                                          do_single_step_q_scrub_occurred |
+                                          debug_mode_q_scrub_occurred |
+                                          enter_debug_mode_prio_q_scrub_occurred |
+                                          load_err_q_scrub_occurred |
+                                          store_err_q_scrub_occurred |
+                                          exc_req_q_scrub_occurred |
+                                          illegal_insn_q_scrub_occurred;
+  end
+endgenerate
+
 endmodule

@@ -121,7 +121,40 @@ module ibex_cs_registers #(
   input  logic                 mem_store_i,                 // store to memory in this cycle
   input  logic                 dside_wait_i,                // core waiting for the dside
   input  logic                 mul_wait_i,                  // core waiting for multiply
-  input  logic                 div_wait_i                   // core waiting for divide
+  input  logic                 div_wait_i,                   // core waiting for divide
+
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                  cs_registers_new_maj_err_o,
+  output logic                  cs_registers_new_min_err_o,
+  output logic                  cs_registers_scrub_occurred_o
+
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+  
+  // FATORI Fault Tolerance Metrics Inputs (gated by FT_LAYER)
+  `ifdef FATORI_FT_LAYER_1
+    ,input  logic [15:0]     fatori_minor_cnt_i
+    ,input  logic [15:0]     fatori_major_cnt_i
+    
+    `ifdef FATORI_FT_LAYER_2
+      ,input  logic [15:0]     fatori_corrected_cnt_i
+      
+      `ifdef FATORI_FT_LAYER_3
+        ,input  logic [31:0]     fatori_cycles_to_first_min_i
+        ,input  logic [31:0]     fatori_cycles_to_first_maj_i
+        ,input  logic [15:0]     fatori_last_detection_latency_i
+        
+        `ifdef FATORI_FT_LAYER_4
+          ,input  logic [31:0]     fatori_latency_sum_i
+          ,input  logic [15:0]     fatori_latency_count_i
+        `endif
+      `endif
+    `endif
+  `endif
+
+
 );
 
   import ibex_pkg::*;
@@ -544,6 +577,57 @@ module ibex_cs_registers #(
         csr_rdata_int = '0;
       end
 
+      // ========================================================================
+      // FATORI Fault Tolerance Metrics CSRs (Read-Only, Layer-Gated)
+      // Individual registers matching iob_csr.h software API (0xBC0-0xBC8)
+      // ========================================================================
+      
+      `ifdef FATORI_FT_LAYER_1
+        CSR_FATORI_ERR_CNT: begin
+          // Total error count (minor + major), computed by software
+          // Return minor_cnt here; software adds major_cnt via 0xBC2
+          csr_rdata_int = {16'd0, fatori_minor_cnt_i};
+        end
+        
+        CSR_FATORI_MINOR_CNT: begin
+          csr_rdata_int = {16'd0, fatori_minor_cnt_i};
+        end
+        
+        CSR_FATORI_MAJOR_CNT: begin
+          csr_rdata_int = {16'd0, fatori_major_cnt_i};
+        end
+        
+        `ifdef FATORI_FT_LAYER_2
+          CSR_FATORI_CORRECTED_CNT: begin
+            csr_rdata_int = {16'd0, fatori_corrected_cnt_i};
+          end
+          
+          `ifdef FATORI_FT_LAYER_3
+            CSR_FATORI_CYCLES_MIN: begin
+              csr_rdata_int = fatori_cycles_to_first_min_i;
+            end
+            
+            CSR_FATORI_CYCLES_MAJ: begin
+              csr_rdata_int = fatori_cycles_to_first_maj_i;
+            end
+            
+            CSR_FATORI_DETECT_LATENCY: begin
+              csr_rdata_int = {16'd0, fatori_last_detection_latency_i};
+            end
+            
+            `ifdef FATORI_FT_LAYER_4
+              CSR_FATORI_LATENCY_SUM: begin
+                csr_rdata_int = fatori_latency_sum_i;
+              end
+              
+              CSR_FATORI_LATENCY_CNT: begin
+                csr_rdata_int = {16'd0, fatori_latency_count_i};
+              end
+            `endif
+          `endif
+        `endif
+      `endif
+
       default: begin
         illegal_csr = 1'b1;
       end
@@ -807,7 +891,8 @@ module ibex_cs_registers #(
   end
 
   // Update current priv level
-  `IOB_REG_TMR_ENUM(priv_lvl_e, PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, priv_lvl_q)
+  //`FATORI_REG(PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, fi_port, 8'd78, '0, '0, priv_lvl_q)
+  `FATORI_REG_ENUM(priv_lvl_e,PRIV_LVL_M, !rst_ni, '1, priv_lvl_d, priv_lvl_q, fi_port, 8'd78, '0, '0, priv_lvl_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -861,6 +946,30 @@ module ibex_cs_registers #(
   // CSR instantiations //
   ////////////////////////
 
+  // Error wires for each ibex_csr instance (22 total)
+  logic mstatus_csr_new_maj_err, mstatus_csr_new_min_err, mstatus_csr_scrub_occurred;
+  logic mepc_csr_new_maj_err, mepc_csr_new_min_err, mepc_csr_scrub_occurred;
+  logic mie_csr_new_maj_err, mie_csr_new_min_err, mie_csr_scrub_occurred;
+  logic mscratch_csr_new_maj_err, mscratch_csr_new_min_err, mscratch_csr_scrub_occurred;
+  logic mcause_csr_new_maj_err, mcause_csr_new_min_err, mcause_csr_scrub_occurred;
+  logic mtval_csr_new_maj_err, mtval_csr_new_min_err, mtval_csr_scrub_occurred;
+  logic mtvec_csr_new_maj_err, mtvec_csr_new_min_err, mtvec_csr_scrub_occurred;
+  logic dcsr_csr_new_maj_err, dcsr_csr_new_min_err, dcsr_csr_scrub_occurred;
+  logic depc_csr_new_maj_err, depc_csr_new_min_err, depc_csr_scrub_occurred;
+  logic dscratch0_csr_new_maj_err, dscratch0_csr_new_min_err, dscratch0_csr_scrub_occurred;
+  logic dscratch1_csr_new_maj_err, dscratch1_csr_new_min_err, dscratch1_csr_scrub_occurred;
+  logic mstack_csr_new_maj_err, mstack_csr_new_min_err, mstack_csr_scrub_occurred;
+  logic mstack_epc_csr_new_maj_err, mstack_epc_csr_new_min_err, mstack_epc_csr_scrub_occurred;
+  logic mstack_cause_csr_new_maj_err, mstack_cause_csr_new_min_err, mstack_cause_csr_scrub_occurred;
+  logic pmp_cfg_csr_new_maj_err, pmp_cfg_csr_new_min_err, pmp_cfg_csr_scrub_occurred;
+  logic pmp_addr_csr_new_maj_err, pmp_addr_csr_new_min_err, pmp_addr_csr_scrub_occurred;
+  logic pmp_mseccfg_new_maj_err, pmp_mseccfg_new_min_err, pmp_mseccfg_scrub_occurred;
+  logic tselect_csr_new_maj_err, tselect_csr_new_min_err, tselect_csr_scrub_occurred;
+  logic tmatch_control_csr_new_maj_err, tmatch_control_csr_new_min_err, tmatch_control_csr_scrub_occurred;
+  logic tmatch_value_csr_new_maj_err, tmatch_value_csr_new_min_err, tmatch_value_csr_scrub_occurred;
+  logic cpuctrlsts_ic_scr_key_valid_q_csr_new_maj_err, cpuctrlsts_ic_scr_key_valid_q_csr_new_min_err, cpuctrlsts_ic_scr_key_valid_q_csr_scrub_occurred;
+  logic cpuctrlsts_part_csr_new_maj_err, cpuctrlsts_part_csr_new_min_err, cpuctrlsts_part_csr_scrub_occurred;
+
   // MSTATUS
   localparam status_t MSTATUS_RST_VAL = '{mie:  1'b0,
                                           mpie: 1'b1,
@@ -877,7 +986,14 @@ module ibex_cs_registers #(
     .wr_data_i ({mstatus_d}),
     .wr_en_i   (mstatus_en),
     .rd_data_o (mstatus_q),
-    .rd_error_o(mstatus_err)
+    .rd_error_o(mstatus_err),
+    .csr_new_maj_err_o(mstatus_csr_new_maj_err),
+    .csr_new_min_err_o(mstatus_csr_new_min_err),
+    .csr_scrub_occurred_o(mstatus_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MEPC
@@ -891,7 +1007,14 @@ module ibex_cs_registers #(
     .wr_data_i (mepc_d),
     .wr_en_i   (mepc_en),
     .rd_data_o (mepc_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mepc_csr_new_maj_err),
+    .csr_new_min_err_o(mepc_csr_new_min_err),
+    .csr_scrub_occurred_o(mepc_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MIE
@@ -909,7 +1032,14 @@ module ibex_cs_registers #(
     .wr_data_i ({mie_d}),
     .wr_en_i   (mie_en),
     .rd_data_o (mie_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mie_csr_new_maj_err),
+    .csr_new_min_err_o(mie_csr_new_min_err),
+    .csr_scrub_occurred_o(mie_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MSCRATCH
@@ -923,7 +1053,14 @@ module ibex_cs_registers #(
     .wr_data_i (csr_wdata_int),
     .wr_en_i   (mscratch_en),
     .rd_data_o (mscratch_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mscratch_csr_new_maj_err),
+    .csr_new_min_err_o(mscratch_csr_new_min_err),
+    .csr_scrub_occurred_o(mscratch_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MCAUSE
@@ -937,7 +1074,14 @@ module ibex_cs_registers #(
     .wr_data_i ({mcause_d}),
     .wr_en_i   (mcause_en),
     .rd_data_o (mcause_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mcause_csr_new_maj_err),
+    .csr_new_min_err_o(mcause_csr_new_min_err),
+    .csr_scrub_occurred_o(mcause_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MTVAL
@@ -951,7 +1095,14 @@ module ibex_cs_registers #(
     .wr_data_i (mtval_d),
     .wr_en_i   (mtval_en),
     .rd_data_o (mtval_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mtval_csr_new_maj_err),
+    .csr_new_min_err_o(mtval_csr_new_min_err),
+    .csr_scrub_occurred_o(mtval_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MTVEC
@@ -965,7 +1116,14 @@ module ibex_cs_registers #(
     .wr_data_i (mtvec_d),
     .wr_en_i   (mtvec_en),
     .rd_data_o (mtvec_q),
-    .rd_error_o(mtvec_err)
+    .rd_error_o(mtvec_err),
+    .csr_new_maj_err_o(mtvec_csr_new_maj_err),
+    .csr_new_min_err_o(mtvec_csr_new_min_err),
+    .csr_scrub_occurred_o(mtvec_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // DCSR
@@ -985,7 +1143,14 @@ module ibex_cs_registers #(
     .wr_data_i ({dcsr_d}),
     .wr_en_i   (dcsr_en),
     .rd_data_o (dcsr_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(dcsr_csr_new_maj_err),
+    .csr_new_min_err_o(dcsr_csr_new_min_err),
+    .csr_scrub_occurred_o(dcsr_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // DEPC
@@ -999,7 +1164,14 @@ module ibex_cs_registers #(
     .wr_data_i (depc_d),
     .wr_en_i   (depc_en),
     .rd_data_o (depc_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(depc_csr_new_maj_err),
+    .csr_new_min_err_o(depc_csr_new_min_err),
+    .csr_scrub_occurred_o(depc_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // DSCRATCH0
@@ -1013,7 +1185,14 @@ module ibex_cs_registers #(
     .wr_data_i (csr_wdata_int),
     .wr_en_i   (dscratch0_en),
     .rd_data_o (dscratch0_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(dscratch0_csr_new_maj_err),
+    .csr_new_min_err_o(dscratch0_csr_new_min_err),
+    .csr_scrub_occurred_o(dscratch0_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // DSCRATCH1
@@ -1027,7 +1206,14 @@ module ibex_cs_registers #(
     .wr_data_i (csr_wdata_int),
     .wr_en_i   (dscratch1_en),
     .rd_data_o (dscratch1_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(dscratch1_csr_new_maj_err),
+    .csr_new_min_err_o(dscratch1_csr_new_min_err),
+    .csr_scrub_occurred_o(dscratch1_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MSTACK
@@ -1042,7 +1228,14 @@ module ibex_cs_registers #(
     .wr_data_i ({mstack_d}),
     .wr_en_i   (mstack_en),
     .rd_data_o (mstack_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mstack_csr_new_maj_err),
+    .csr_new_min_err_o(mstack_csr_new_min_err),
+    .csr_scrub_occurred_o(mstack_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MSTACK_EPC
@@ -1056,7 +1249,14 @@ module ibex_cs_registers #(
     .wr_data_i (mstack_epc_d),
     .wr_en_i   (mstack_en),
     .rd_data_o (mstack_epc_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mstack_epc_csr_new_maj_err),
+    .csr_new_min_err_o(mstack_epc_csr_new_min_err),
+    .csr_scrub_occurred_o(mstack_epc_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // MSTACK_CAUSE
@@ -1070,7 +1270,14 @@ module ibex_cs_registers #(
     .wr_data_i (mstack_cause_d),
     .wr_en_i   (mstack_en),
     .rd_data_o (mstack_cause_q),
-    .rd_error_o()
+    .rd_error_o(),
+    .csr_new_maj_err_o(mstack_cause_csr_new_maj_err),
+    .csr_new_min_err_o(mstack_cause_csr_new_min_err),
+    .csr_scrub_occurred_o(mstack_cause_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // -----------------
@@ -1173,7 +1380,13 @@ module ibex_cs_registers #(
         .wr_data_i ({pmp_cfg_wdata[i]}),
         .wr_en_i   (pmp_cfg_we[i]),
         .rd_data_o (pmp_cfg[i]),
-        .rd_error_o(pmp_cfg_err[i])
+        .rd_error_o(pmp_cfg_err[i]),
+        .csr_new_maj_err_o(pmp_cfg_csr_new_maj_err),
+        .csr_new_min_err_o(pmp_cfg_csr_new_min_err)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
       );
 
       // MSECCFG.RLB allows the lock bit to be bypassed (allowing cfg writes when MSECCFG.RLB is
@@ -1208,7 +1421,14 @@ module ibex_cs_registers #(
         .wr_data_i (csr_wdata_int[31-:PMPAddrWidth]),
         .wr_en_i   (pmp_addr_we[i]),
         .rd_data_o (pmp_addr[i]),
-        .rd_error_o(pmp_addr_err[i])
+        .rd_error_o(pmp_addr_err[i]),
+        .csr_new_maj_err_o(pmp_addr_csr_new_maj_err),
+        .csr_new_min_err_o(pmp_addr_csr_new_min_err),
+        .csr_scrub_occurred_o(pmp_addr_csr_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
       );
 
       `ASSERT_INIT(PMPAddrRstLowBitsZero_A, PMPRstAddr[i][33-PMPAddrWidth:0] == '0)
@@ -1241,7 +1461,14 @@ module ibex_cs_registers #(
       .wr_data_i (pmp_mseccfg_d),
       .wr_en_i   (pmp_mseccfg_we),
       .rd_data_o (pmp_mseccfg_q),
-      .rd_error_o(pmp_mseccfg_err)
+      .rd_error_o(pmp_mseccfg_err),
+      .csr_new_maj_err_o(pmp_mseccfg_new_maj_err),
+      .csr_new_min_err_o(pmp_mseccfg_new_min_err),
+      .csr_scrub_occurred_o(pmp_mseccfg_scrub_occurred)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
 
     assign pmp_csr_err = (|pmp_cfg_err) | (|pmp_addr_err) | pmp_mseccfg_err;
@@ -1426,7 +1653,7 @@ module ibex_cs_registers #(
     assign mcountinhibit = mcountinhibit_q;
   end
 
-  `IOB_REG_TMR(MHPMCounterNum+3, '0, '0, !rst_ni, '1, mcountinhibit_d, mcountinhibit_q, mcountinhibit)
+  `FATORI_REG('0, !rst_ni, '1, mcountinhibit_d, mcountinhibit_q, fi_port, 8'd77, '0, '0, mcountinhibit)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     mcountinhibit_q <= '0;
@@ -1488,7 +1715,14 @@ module ibex_cs_registers #(
       .wr_data_i (tselect_d),
       .wr_en_i   (tselect_we),
       .rd_data_o (tselect_q),
-      .rd_error_o()
+      .rd_error_o(),
+      .csr_new_maj_err_o(tselect_csr_new_maj_err),
+      .csr_new_min_err_o(tselect_csr_new_min_err),
+      .csr_scrub_occurred_o(tselect_csr_scrub_occurred)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
 
     for (genvar i = 0; i < DbgHwBreakNum; i++) begin : g_dbg_tmatch_reg
@@ -1502,7 +1736,14 @@ module ibex_cs_registers #(
         .wr_data_i (tmatch_control_d),
         .wr_en_i   (tmatch_control_we[i]),
         .rd_data_o (tmatch_control_q[i]),
-        .rd_error_o()
+        .rd_error_o(),
+        .csr_new_maj_err_o(tmatch_control_csr_new_maj_err),
+        .csr_new_min_err_o(tmatch_control_csr_new_min_err),
+        .csr_scrub_occurred_o(tmatch_control_csr_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
       );
 
       ibex_csr #(
@@ -1515,7 +1756,14 @@ module ibex_cs_registers #(
         .wr_data_i (tmatch_value_d),
         .wr_en_i   (tmatch_value_we[i]),
         .rd_data_o (tmatch_value_q[i]),
-        .rd_error_o()
+        .rd_error_o(),
+        .csr_new_maj_err_o(tmatch_value_csr_new_maj_err),
+        .csr_new_min_err_o(tmatch_value_csr_new_min_err),
+        .csr_scrub_occurred_o(tmatch_value_csr_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
       );
     end
 
@@ -1633,7 +1881,14 @@ module ibex_cs_registers #(
       .wr_data_i (ic_scr_key_valid_i),
       .wr_en_i   (1'b1),
       .rd_data_o (cpuctrlsts_ic_scr_key_valid_q),
-      .rd_error_o(cpuctrlsts_ic_scr_key_err)
+      .rd_error_o(cpuctrlsts_ic_scr_key_err),
+      .csr_new_maj_err_o(cpuctrlsts_ic_scr_key_valid_q_csr_new_maj_err),
+      .csr_new_min_err_o(cpuctrlsts_ic_scr_key_valid_q_csr_new_min_err),
+      .csr_scrub_occurred_o(cpuctrlsts_ic_scr_key_valid_q_csr_scrub_occurred)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
   end else begin : gen_no_icache
     // tieoff for the unused icen bit
@@ -1668,7 +1923,14 @@ module ibex_cs_registers #(
     .wr_data_i ({cpuctrlsts_part_d}),
     .wr_en_i   (cpuctrlsts_part_we),
     .rd_data_o (cpuctrlsts_part_q),
-    .rd_error_o(cpuctrlsts_part_err)
+    .rd_error_o(cpuctrlsts_part_err),
+    .csr_new_maj_err_o(cpuctrlsts_part_csr_new_maj_err),
+    .csr_new_min_err_o(cpuctrlsts_part_csr_new_min_err),
+    .csr_scrub_occurred_o(cpuctrlsts_part_csr_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   assign csr_shadow_err_o =
@@ -1679,5 +1941,83 @@ module ibex_cs_registers #(
   ////////////////
 
   `ASSERT(IbexCsrOpEnRequiresAccess, csr_op_en_i |-> csr_access_i)
+
+  // ============================================================
+  // Error Aggregation (OR own registers + all 22 CSR children)
+  // ============================================================
+  assign cs_registers_new_maj_err_o = mcountinhibit_new_maj_err |
+                                       priv_lvl_q_new_maj_err |
+                                       mstatus_csr_new_maj_err |
+                                       mepc_csr_new_maj_err |
+                                       mie_csr_new_maj_err |
+                                       mscratch_csr_new_maj_err |
+                                       mcause_csr_new_maj_err |
+                                       mtval_csr_new_maj_err |
+                                       mtvec_csr_new_maj_err |
+                                       dcsr_csr_new_maj_err |
+                                       depc_csr_new_maj_err |
+                                       dscratch0_csr_new_maj_err |
+                                       dscratch1_csr_new_maj_err |
+                                       mstack_csr_new_maj_err |
+                                       mstack_epc_csr_new_maj_err |
+                                       mstack_cause_csr_new_maj_err |
+                                       pmp_cfg_csr_new_maj_err |
+                                       pmp_addr_csr_new_maj_err |
+                                       pmp_mseccfg_new_maj_err |
+                                       tselect_csr_new_maj_err |
+                                       tmatch_control_csr_new_maj_err |
+                                       tmatch_value_csr_new_maj_err |
+                                       cpuctrlsts_ic_scr_key_valid_q_csr_new_maj_err |
+                                       cpuctrlsts_part_csr_new_maj_err;
+  
+  assign cs_registers_new_min_err_o = mcountinhibit_new_min_err |
+                                       priv_lvl_q_new_min_err |
+                                       mstatus_csr_new_min_err |
+                                       mepc_csr_new_min_err |
+                                       mie_csr_new_min_err |
+                                       mscratch_csr_new_min_err |
+                                       mcause_csr_new_min_err |
+                                       mtval_csr_new_min_err |
+                                       mtvec_csr_new_min_err |
+                                       dcsr_csr_new_min_err |
+                                       depc_csr_new_min_err |
+                                       dscratch0_csr_new_min_err |
+                                       dscratch1_csr_new_min_err |
+                                       mstack_csr_new_min_err |
+                                       mstack_epc_csr_new_min_err |
+                                       mstack_cause_csr_new_min_err |
+                                       pmp_cfg_csr_new_min_err |
+                                       pmp_addr_csr_new_min_err |
+                                       pmp_mseccfg_new_min_err |
+                                       tselect_csr_new_min_err |
+                                       tmatch_control_csr_new_min_err |
+                                       tmatch_value_csr_new_min_err |
+                                       cpuctrlsts_ic_scr_key_valid_q_csr_new_min_err |
+                                       cpuctrlsts_part_csr_new_min_err;
+  
+  assign cs_registers_scrub_occurred_o = mcountinhibit_scrub_occurred |
+                                          priv_lvl_q_scrub_occurred |
+                                          mstatus_csr_scrub_occurred |
+                                          mepc_csr_scrub_occurred |
+                                          mie_csr_scrub_occurred |
+                                          mscratch_csr_scrub_occurred |
+                                          mcause_csr_scrub_occurred |
+                                          mtval_csr_scrub_occurred |
+                                          mtvec_csr_scrub_occurred |
+                                          dcsr_csr_scrub_occurred |
+                                          depc_csr_scrub_occurred |
+                                          dscratch0_csr_scrub_occurred |
+                                          dscratch1_csr_scrub_occurred |
+                                          mstack_csr_scrub_occurred |
+                                          mstack_epc_csr_scrub_occurred |
+                                          mstack_cause_csr_scrub_occurred |
+                                          pmp_cfg_csr_scrub_occurred |
+                                          pmp_addr_csr_scrub_occurred |
+                                          pmp_mseccfg_scrub_occurred |
+                                          tselect_csr_scrub_occurred |
+                                          tmatch_control_csr_scrub_occurred |
+                                          tmatch_value_csr_scrub_occurred |
+                                          cpuctrlsts_ic_scr_key_valid_q_csr_scrub_occurred |
+                                          cpuctrlsts_part_csr_scrub_occurred;
 
 endmodule

@@ -19,10 +19,9 @@ module iob_reg_re #(
 );
    // data_int
    wire [DATA_W-1:0] data_int;
-   
+
    // Priority: reset > enable > hold
-   assign data_int = rst_i ? RST_VAL :
-                                (en_i ? data_i  : data_o);
+   assign data_int = rst_i ? RST_VAL : (en_i ? data_i : data_o);
 
 
    // Default description
@@ -32,8 +31,8 @@ module iob_reg_re #(
    ) reg0 (
       // clk_en_rst_s port
       .clk_i (clk_i),
-      .cke_i  (cke_i | rst_i),   // force a clock when resetting
-      .arst_i (1'b0),            // no async clear on the leaf flop
+      .cke_i (cke_i | rst_i),  // force a clock when resetting
+      .arst_i(1'b0),           // no async clear on the leaf flop
       // rst_i port
       //.rst_i (rst_i),
       // data_i port

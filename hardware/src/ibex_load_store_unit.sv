@@ -67,7 +67,18 @@ module ibex_load_store_unit #(
   output logic         busy_o,
 
   output logic         perf_load_o,
-  output logic         perf_store_o
+  output logic         perf_store_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic         lsu_new_maj_err_o,
+  output logic         lsu_new_min_err_o,
+  output logic         lsu_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   logic [31:0]  data_addr;
@@ -187,7 +198,7 @@ module ibex_load_store_unit #(
   /////////////////////
 
   // register for unaligned rdata
-  `IOB_REG_TMR(24, '0, '0, !rst_ni, rdata_update, data_rdata_i[31:8], rdata_q, rdata)
+  `FATORI_REG('0, !rst_ni, rdata_update, data_rdata_i[31:8], rdata_q, fi_port, 8'd128, '0, '0, rdata)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_q <= '0;
@@ -197,10 +208,10 @@ module ibex_load_store_unit #(
   // end
 
   // registers for transaction control
-  `IOB_REG_TMR(2, '0, '0, !rst_ni, ctrl_update, data_offset, rdata_offset_q, rdata_offset)
-  `IOB_REG_TMR(2, '0, '0, !rst_ni, ctrl_update, lsu_type_i, data_type_q, data_type)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ctrl_update, lsu_sign_ext_i, data_sign_ext_q, data_sign_ext)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, ctrl_update, lsu_we_i, data_we_q, data_we)
+  `FATORI_REG('0, !rst_ni, ctrl_update, data_offset, rdata_offset_q, fi_port, 8'd129, '0, '0, rdata_offset)
+  `FATORI_REG('0, !rst_ni, ctrl_update, lsu_type_i, data_type_q, fi_port, 8'd130, '0, '0, data_type)
+  `FATORI_REG('0, !rst_ni, ctrl_update, lsu_sign_ext_i, data_sign_ext_q, fi_port, 8'd131, '0, '0, data_sign_ext)
+  `FATORI_REG('0, !rst_ni, ctrl_update, lsu_we_i, data_we_q, fi_port, 8'd132, '0, '0, data_we)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     rdata_offset_q  <= 2'h0;
@@ -221,7 +232,7 @@ module ibex_load_store_unit #(
   // a misaligned access provide the word aligned address of the second half.
   assign addr_last_d = addr_incr_req_o ? data_addr_w_aligned : data_addr;
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, addr_update, addr_last_d, addr_last_q, addr_last)
+  `FATORI_REG('0, !rst_ni, addr_update, addr_last_d, addr_last_q, fi_port, 8'd133, '0, '0, addr_last)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     addr_last_q <= '0;
@@ -494,10 +505,11 @@ module ibex_load_store_unit #(
 
   // registers for FSM
   
-  `IOB_REG_TMR_ENUM(ls_fsm_e, IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, ls_fsm_cs)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, handle_misaligned_d, handle_misaligned_q, handle_misaligned)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, pmp_err_d, pmp_err_q, pmp_err)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, lsu_err_d, lsu_err_q, lsu_err)
+  `FATORI_REG_ENUM(ls_fsm_e, IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, fi_port, 8'd134, '0, '0, ls_fsm_cs)
+  //`FATORI_REG(IDLE, !rst_ni, '1, ls_fsm_ns, ls_fsm_cs, fi_port, 8'd134, '0, '0, ls_fsm_cs)
+  `FATORI_REG('0, !rst_ni, '1, handle_misaligned_d, handle_misaligned_q, fi_port, 8'd135, '0, '0, handle_misaligned)
+  `FATORI_REG('0, !rst_ni, '1, pmp_err_d, pmp_err_q, fi_port, 8'd136, '0, '0, pmp_err)
+  `FATORI_REG('0, !rst_ni, '1, lsu_err_d, lsu_err_q, fi_port, 8'd137, '0, '0, lsu_err)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     ls_fsm_cs           <= IDLE;
@@ -592,8 +604,8 @@ module ibex_load_store_unit #(
                                 fcov_mis_rvalid_1 && data_bus_err_i ? 1'b1                 : // set
                                                                       fcov_mis_bus_err_1_q ;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, fcov_mis_2_en_d, fcov_mis_2_en_q, fcov_mis_2_en)
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, fcov_mis_bus_err_1_d, fcov_mis_bus_err_1_q, fcov_mis_bus_err_1)
+  `FATORI_REG('0, !rst_ni, '1, fcov_mis_2_en_d, fcov_mis_2_en_q, fi_port, 8'd138, '0, '0, fcov_mis_2_en)
+  `FATORI_REG('0, !rst_ni, '1, fcov_mis_bus_err_1_d, fcov_mis_bus_err_1_q, fi_port, 8'd139, '0, '0, fcov_mis_bus_err_1)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     fcov_mis_2_en_q <= 1'b0;
@@ -633,5 +645,82 @@ module ibex_load_store_unit #(
 
   // Address must be word aligned when request is sent.
   `ASSERT(IbexDataAddrUnaligned, data_req_o |-> (data_addr_o[1:0] == 2'b00))
+
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+`ifndef DV_FCOV_DISABLE
+  assign lsu_new_maj_err_o = rdata_new_maj_err |
+                              rdata_offset_new_maj_err |
+                              data_type_new_maj_err |
+                              data_sign_ext_new_maj_err |
+                              data_we_new_maj_err |
+                              addr_last_new_maj_err |
+                              ls_fsm_cs_new_maj_err |
+                              handle_misaligned_new_maj_err |
+                              pmp_err_new_maj_err |
+                              lsu_err_new_maj_err |
+                              fcov_mis_2_en_new_maj_err |
+                              fcov_mis_bus_err_1_new_maj_err;
+  
+  assign lsu_new_min_err_o = rdata_new_min_err |
+                              rdata_offset_new_min_err |
+                              data_type_new_min_err |
+                              data_sign_ext_new_min_err |
+                              data_we_new_min_err |
+                              addr_last_new_min_err |
+                              ls_fsm_cs_new_min_err |
+                              handle_misaligned_new_min_err |
+                              pmp_err_new_min_err |
+                              lsu_err_new_min_err |
+                              fcov_mis_2_en_new_min_err |
+                              fcov_mis_bus_err_1_new_min_err;
+  
+  assign lsu_scrub_occurred_o = rdata_scrub_occurred |
+                                 rdata_offset_scrub_occurred |
+                                 data_type_scrub_occurred |
+                                 data_sign_ext_scrub_occurred |
+                                 data_we_scrub_occurred |
+                                 addr_last_scrub_occurred |
+                                 ls_fsm_cs_scrub_occurred |
+                                 handle_misaligned_scrub_occurred |
+                                 pmp_err_scrub_occurred |
+                                 lsu_err_scrub_occurred |
+                                 fcov_mis_2_en_scrub_occurred |
+                                 fcov_mis_bus_err_1_scrub_occurred;
+`else
+  assign lsu_new_maj_err_o = rdata_new_maj_err |
+                              rdata_offset_new_maj_err |
+                              data_type_new_maj_err |
+                              data_sign_ext_new_maj_err |
+                              data_we_new_maj_err |
+                              addr_last_new_maj_err |
+                              ls_fsm_cs_new_maj_err |
+                              handle_misaligned_new_maj_err |
+                              pmp_err_new_maj_err |
+                              lsu_err_new_maj_err;
+  
+  assign lsu_new_min_err_o = rdata_new_min_err |
+                              rdata_offset_new_min_err |
+                              data_type_new_min_err |
+                              data_sign_ext_new_min_err |
+                              data_we_new_min_err |
+                              addr_last_new_min_err |
+                              ls_fsm_cs_new_min_err |
+                              handle_misaligned_new_min_err |
+                              pmp_err_new_min_err |
+                              lsu_err_new_min_err;
+  
+  assign lsu_scrub_occurred_o = rdata_scrub_occurred |
+                                 rdata_offset_scrub_occurred |
+                                 data_type_scrub_occurred |
+                                 data_sign_ext_scrub_occurred |
+                                 data_we_scrub_occurred |
+                                 addr_last_scrub_occurred |
+                                 ls_fsm_cs_scrub_occurred |
+                                 handle_misaligned_scrub_occurred |
+                                 pmp_err_scrub_occurred |
+                                 lsu_err_scrub_occurred;
+`endif
 
 endmodule

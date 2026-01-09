@@ -27,7 +27,18 @@ module ibex_dummy_instr import ibex_pkg::*; #(
   input  logic        fetch_valid_i,
   input  logic        id_in_ready_i,
   output logic        insert_dummy_instr_o,
-  output logic [31:0] dummy_instr_data_o
+  output logic [31:0] dummy_instr_data_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic        dummy_instr_new_maj_err_o,
+  output logic        dummy_instr_new_min_err_o,
+  output logic        dummy_instr_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   localparam int unsigned TIMEOUT_CNT_W = 5;
@@ -65,7 +76,7 @@ module ibex_dummy_instr import ibex_pkg::*; #(
 
   assign dummy_instr_seed_d = dummy_instr_seed_q ^ dummy_instr_seed_i;
 
-  `IOB_REG_TMR(32, '0, '0, !rst_ni, dummy_instr_seed_en_i, dummy_instr_seed_d, dummy_instr_seed_q, dummy_instr_seed)
+  `FATORI_REG('0, !rst_ni, dummy_instr_seed_en_i, dummy_instr_seed_d, dummy_instr_seed_q, fi_port, 8'd82, '0, '0, dummy_instr_seed)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     dummy_instr_seed_q <= '0;
@@ -104,7 +115,7 @@ module ibex_dummy_instr import ibex_pkg::*; #(
   assign dummy_cnt_en        = dummy_instr_en_i & id_in_ready_i &
                                (fetch_valid_i | insert_dummy_instr);
 
-  `IOB_REG_TMR(TIMEOUT_CNT_W, '0, '0, !rst_ni, dummy_cnt_en, dummy_cnt_d, dummy_cnt_q, dummy_cnt)
+  `FATORI_REG('0, !rst_ni, dummy_cnt_en, dummy_cnt_d, dummy_cnt_q, fi_port, 8'd83, '0, '0, dummy_cnt)
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
   //     dummy_cnt_q <= '0;
@@ -148,5 +159,17 @@ module ibex_dummy_instr import ibex_pkg::*; #(
   // Assign outputs
   assign insert_dummy_instr_o = insert_dummy_instr;
   assign dummy_instr_data_o   = dummy_instr;
+
+  // ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  assign dummy_instr_new_maj_err_o = dummy_instr_seed_new_maj_err | 
+                                      dummy_cnt_new_maj_err;
+  
+  assign dummy_instr_new_min_err_o = dummy_instr_seed_new_min_err | 
+                                      dummy_cnt_new_min_err;
+  
+  assign dummy_instr_scrub_occurred_o = dummy_instr_seed_scrub_occurred | 
+                                         dummy_cnt_scrub_occurred;
 
 endmodule

@@ -106,7 +106,18 @@ module ibex_lockstep import ibex_pkg::*; #(
   output logic                         alert_major_bus_o,
   input  ibex_mubi_t                   core_busy_i,
   input  logic                         test_en_i,
-  input  logic                         scan_rst_ni
+  input  logic                         scan_rst_ni,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                         lockstep_new_maj_err_o,
+  output logic                         lockstep_new_min_err_o,
+  output logic                         lockstep_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   localparam int unsigned LockstepOffsetW = $clog2(LockstepOffset);
@@ -247,14 +258,10 @@ module ibex_lockstep import ibex_pkg::*; #(
 
   // Delay the inputs
   // stage 0 <= stage 1
-  `IOB_REG_TMR($bits(shadow_inputs_q[0]),     $bits(shadow_inputs_q[0])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_q[1],     shadow_inputs_q[0],     shadow_inputs_0)
-  //`IOB_REG_TMR($bits(shadow_tag_rdata_q[0]),  $bits(shadow_tag_rdata_q[0])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, shadow_tag_rdata_q[1],  shadow_tag_rdata_q[0],  shadow_tag_rdata_0)
-  //`IOB_REG_TMR($bits(shadow_data_rdata_q[0]), $bits(shadow_data_rdata_q[0])'('0), '0, (ResetAll ? !rst_ni : '0), '1, shadow_data_rdata_q[1], shadow_data_rdata_q[0], shadow_data_rdata_0)
+  `FATORI_REG($bits(shadow_inputs_q[0])'('0), (ResetAll ? !rst_ni : '0), '1, shadow_inputs_q[1], shadow_inputs_q[0], fi_port, 8'd140, '0, '0, shadow_inputs_0)
 
   // stage 1 <= inputs
-  `IOB_REG_TMR($bits(shadow_inputs_q[1]),     $bits(shadow_inputs_q[1])'('0),     '0, (ResetAll ? !rst_ni : '0), '1, shadow_inputs_in,       shadow_inputs_q[1],     shadow_inputs_1)
-  //`IOB_REG_TMR($bits(shadow_tag_rdata_q[1]),  $bits(shadow_tag_rdata_q[1])'('0),  '0, (ResetAll ? !rst_ni : '0), '1, ic_tag_rdata_i,         shadow_tag_rdata_q[1],  shadow_tag_rdata_1)
-  //`IOB_REG_TMR($bits(shadow_data_rdata_q[1]), $bits(shadow_data_rdata_q[1])'('0), '0, (ResetAll ? !rst_ni : '0), '1, ic_data_rdata_i,        shadow_data_rdata_q[1], shadow_data_rdata_1)
+  `FATORI_REG($bits(shadow_inputs_q[1])'('0), (ResetAll ? !rst_ni : '0), '1, shadow_inputs_in, shadow_inputs_q[1], fi_port, 8'd141, '0, '0, shadow_inputs_1)
 
   // Flatten types (packed aliases for each array slice)
   typedef logic [$bits(shadow_tag_rdata_q[0]) - 1:0]  shadow_tag_vec_t;
@@ -273,10 +280,10 @@ module ibex_lockstep import ibex_pkg::*; #(
   end
 
   // One-liner regs 
-  `IOB_REG_TMR($bits(sh_tag0_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag0_d,   sh_tag0_q,   shadow_tag_rdata_0)
-  `IOB_REG_TMR($bits(sh_data0_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data0_d,  sh_data0_q,  shadow_data_rdata_0)
-  `IOB_REG_TMR($bits(sh_tag1_q),   '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_tag1_d,   sh_tag1_q,   shadow_tag_rdata_1)
-  `IOB_REG_TMR($bits(sh_data1_q),  '0, '0, (ResetAll ? !rst_ni : '0), '1, sh_data1_d,  sh_data1_q,  shadow_data_rdata_1)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, sh_tag0_d, sh_tag0_q, fi_port, 8'd142, '0, '0, shadow_tag_rdata_0)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, sh_data0_d, sh_data0_q, fi_port, 8'd143, '0, '0, shadow_data_rdata_0)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, sh_tag1_d, sh_tag1_q, fi_port, 8'd144, '0, '0, shadow_tag_rdata_1)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, sh_data1_d, sh_data1_q, fi_port, 8'd145, '0, '0, shadow_data_rdata_1)
 
   // Unpack reg outputs back into the original array shapes
   always_comb begin
@@ -526,6 +533,10 @@ module ibex_lockstep import ibex_pkg::*; #(
     .alert_major_internal_o (shadow_alert_major_internal),
     .alert_major_bus_o      (shadow_alert_major_bus),
     .core_busy_o            (shadow_outputs_d.core_busy)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
   );
 
   // Register the shadow core outputs
@@ -546,4 +557,29 @@ module ibex_lockstep import ibex_pkg::*; #(
   assign alert_major_bus_o      = shadow_alert_major_bus;
   assign alert_minor_o          = shadow_alert_minor;
 
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  assign lockstep_new_maj_err_o = shadow_inputs_0_new_maj_err |
+                                   shadow_inputs_1_new_maj_err |
+                                   shadow_tag_rdata_0_new_maj_err |
+                                   shadow_data_rdata_0_new_maj_err |
+                                   shadow_tag_rdata_1_new_maj_err |
+                                   shadow_data_rdata_1_new_maj_err;
+  
+  assign lockstep_new_min_err_o = shadow_inputs_0_new_min_err |
+                                   shadow_inputs_1_new_min_err |
+                                   shadow_tag_rdata_0_new_min_err |
+                                   shadow_data_rdata_0_new_min_err |
+                                   shadow_tag_rdata_1_new_min_err |
+                                   shadow_data_rdata_1_new_min_err;
+  
+  assign lockstep_scrub_occurred_o = shadow_inputs_0_scrub_occurred |
+                                      shadow_inputs_1_scrub_occurred |
+                                      shadow_tag_rdata_0_scrub_occurred |
+                                      shadow_data_rdata_0_scrub_occurred |
+                                      shadow_tag_rdata_1_scrub_occurred |
+                                      shadow_data_rdata_1_scrub_occurred;
+
 endmodule
+

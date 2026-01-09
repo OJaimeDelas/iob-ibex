@@ -1,0 +1,30 @@
+`ifndef FATORI_LOGIC_MON_SVH
+`define FATORI_LOGIC_MON_SVH
+
+
+`define ALU_MON_N 1
+`define ALU_MON_M 0
+`define ALU_MON_HOLD 0
+
+`define LSU_MON_N 1
+`define LSU_MON_M 0
+`define LSU_MON_HOLD 0
+
+`define DECODER_MON_N 1
+`define DECODER_MON_M 0
+`define DECODER_MON_HOLD 0
+
+`define CONTROLLER_MON_N 1
+`define CONTROLLER_MON_M 0
+`define CONTROLLER_MON_HOLD 0
+
+`define IFSTAGE_MON_N 1
+`define IFSTAGE_MON_M 0
+`define IFSTAGE_MON_HOLD 0
+
+`define MULTDIV_MON_N 1
+`define MULTDIV_MON_M 0
+`define MULTDIV_MON_HOLD 0
+
+
+`endif // FATORI_LOGIC_MON_SVH

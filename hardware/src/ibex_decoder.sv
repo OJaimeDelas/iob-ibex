@@ -94,7 +94,18 @@ module ibex_decoder #(
 
   // jump/branches
   output logic                 jump_in_dec_o,         // jump is being calculated in ALU
-  output logic                 branch_in_dec_o
+  output logic                 branch_in_dec_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                 decoder_new_maj_err_o,
+  output logic                 decoder_new_min_err_o,
+  output logic                 decoder_scrub_occurred_o
+
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+
 );
 
   import ibex_pkg::*;
@@ -143,7 +154,7 @@ module ibex_decoder #(
 
   if (RV32B != RV32BNone) begin : gen_rs3_flop
     // the use of rs3 is known one cycle ahead.
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, use_rs3_d, use_rs3_q, use_rs3)
+    `FATORI_REG('0, !rst_ni, '1, use_rs3_d, use_rs3_q, fi_port, 8'd81, '0, '0, use_rs3)
 
     // always_ff  @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -1208,4 +1219,20 @@ module ibex_decoder #(
   // Selectors must be known/valid.
   `ASSERT(IbexRegImmAluOpKnown, (opcode == OPCODE_OP_IMM) |->
       !$isunknown(instr[14:12]))
+
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  generate
+    if (RV32B != RV32BNone) begin : g_err_agg_with_rs3
+      assign decoder_new_maj_err_o = gen_rs3_flop.use_rs3_new_maj_err;
+      assign decoder_new_min_err_o = gen_rs3_flop.use_rs3_new_min_err;
+      assign decoder_scrub_occurred_o = gen_rs3_flop.use_rs3_scrub_occurred;
+    end else begin : g_err_agg_no_rs3
+      assign decoder_new_maj_err_o = 1'b0;
+      assign decoder_new_min_err_o = 1'b0;
+      assign decoder_scrub_occurred_o = 1'b0;
+    end
+  endgenerate
+
 endmodule // controller

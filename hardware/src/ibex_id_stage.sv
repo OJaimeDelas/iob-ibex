@@ -188,7 +188,18 @@ module ibex_id_stage #(
                                                         // access to finish before proceeding
   output logic                      perf_mul_wait_o,
   output logic                      perf_div_wait_o,
-  output logic                      instr_id_done_o
+  output logic                      instr_id_done_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                      id_stage_new_maj_err_o,
+  output logic                      id_stage_new_min_err_o,
+  output logic                      id_stage_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   import ibex_pkg::*;
@@ -399,11 +410,10 @@ module ibex_id_stage #(
   // Multicycle Operation Stage Register //
   /////////////////////////////////////////
 
-  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[0], imd_val_d_ex_i[0], imd_val_q[0], imd_val_q_reg_0)
-  `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[1], imd_val_d_ex_i[1], imd_val_q[1], imd_val_q_reg_1)
+  `FATORI_REG('0, !rst_ni, imd_val_we_ex_i[0], imd_val_d_ex_i[0], imd_val_q[0], fi_port, 8'd93, '0, '0, imd_val_q_reg_0)
+  `FATORI_REG('0, !rst_ni, imd_val_we_ex_i[1], imd_val_d_ex_i[1], imd_val_q[1], fi_port, 8'd94, '0, '0, imd_val_q_reg_1)
 
   // for (genvar i = 0; i < 2; i++) begin : gen_intermediate_val_reg
-  //   `IOB_REG_TMR(34, '0, '0, !rst_ni, imd_val_we_ex_i[i], imd_val_d_ex_i[i], imd_val_q[i], imd_val_q_reg_``i)
   //   // always_ff @(posedge clk_i or negedge rst_ni) begin : intermediate_val_reg
   //   //   if (!rst_ni) begin
   //   //     imd_val_q[i] <= '0;
@@ -435,83 +445,184 @@ module ibex_id_stage #(
   // Decoder //
   /////////////
 
-  ibex_decoder #(
-    .RV32E          (RV32E),
-    .RV32M          (RV32M),
-    .RV32B          (RV32B),
-    .BranchTargetALU(BranchTargetALU)
-  ) decoder_i (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni),
+  generate
+    if (`DECODER_MON_N>1) begin : g_dec_mon
+      
+      `KEEP_DECODER
+      fatori_mon_wrap_decoder #(
+        .N(`DECODER_MON_N),
+        .M(`DECODER_MON_M),
+        .HOLD(`DECODER_MON_HOLD),
+        .RV32E(RV32E), 
+        .RV32M(RV32M), 
+        .RV32B(RV32B), 
+        .BranchTargetALU(BranchTargetALU)
+      ) decoder_mon (
+        .clk_i(clk_i), 
+        .rst_ni(rst_ni),
 
-    // controller
-    .illegal_insn_o(illegal_insn_dec),
-    .ebrk_insn_o   (ebrk_insn),
-    .mret_insn_o   (mret_insn_dec),
-    .dret_insn_o   (dret_insn_dec),
-    .ecall_insn_o  (ecall_insn_dec),
-    .wfi_insn_o    (wfi_insn_dec),
-    .jump_set_o    (jump_set_dec),
-    .branch_taken_i(branch_taken),
-    .icache_inval_o(icache_inval_o),
+        .instr_first_cycle_i(instr_first_cycle),
+        .instr_rdata_i      (instr_rdata_i),
+        .instr_rdata_alu_i  (instr_rdata_alu_i),
+        .illegal_c_insn_i   (illegal_c_insn_i),
+        .branch_taken_i     (branch_taken),
 
-    // from IF-ID pipeline register
-    .instr_first_cycle_i(instr_first_cycle),
-    .instr_rdata_i      (instr_rdata_i),
-    .instr_rdata_alu_i  (instr_rdata_alu_i),
-    .illegal_c_insn_i   (illegal_c_insn_i),
+      `ifdef FATORI_FI
+        .fi_port(fi_port),
+      `endif
 
-    // immediates
-    .imm_a_mux_sel_o(imm_a_mux_sel),
-    .imm_b_mux_sel_o(imm_b_mux_sel_dec),
-    .bt_a_mux_sel_o (bt_a_mux_sel),
-    .bt_b_mux_sel_o (bt_b_mux_sel),
+        .illegal_insn_o(illegal_insn_dec),
+        .ebrk_insn_o   (ebrk_insn),
+        .mret_insn_o   (mret_insn_dec),
+        .dret_insn_o   (dret_insn_dec),
+        .ecall_insn_o  (ecall_insn_dec),
+        .wfi_insn_o    (wfi_insn_dec),
+        .jump_set_o    (jump_set_dec),
+        .icache_inval_o(icache_inval_o),
 
-    .imm_i_type_o   (imm_i_type),
-    .imm_s_type_o   (imm_s_type),
-    .imm_b_type_o   (imm_b_type),
-    .imm_u_type_o   (imm_u_type),
-    .imm_j_type_o   (imm_j_type),
-    .zimm_rs1_type_o(zimm_rs1_type),
+        .imm_a_mux_sel_o(imm_a_mux_sel),
+        .imm_b_mux_sel_o(imm_b_mux_sel_dec),
+        .bt_a_mux_sel_o (bt_a_mux_sel),
+        .bt_b_mux_sel_o (bt_b_mux_sel),
 
-    // register file
-    .rf_wdata_sel_o(rf_wdata_sel),
-    .rf_we_o       (rf_we_dec),
+        .imm_i_type_o   (imm_i_type),
+        .imm_s_type_o   (imm_s_type),
+        .imm_b_type_o   (imm_b_type),
+        .imm_u_type_o   (imm_u_type),
+        .imm_j_type_o   (imm_j_type),
+        .zimm_rs1_type_o(zimm_rs1_type),
 
-    .rf_raddr_a_o(rf_raddr_a_o),
-    .rf_raddr_b_o(rf_raddr_b_o),
-    .rf_waddr_o  (rf_waddr_id_o),
-    .rf_ren_a_o  (rf_ren_a_dec),
-    .rf_ren_b_o  (rf_ren_b_dec),
+        .rf_wdata_sel_o (rf_wdata_sel),
+        .rf_we_o        (rf_we_dec),
+        .rf_raddr_a_o   (rf_raddr_a_o),
+        .rf_raddr_b_o   (rf_raddr_b_o),
+        .rf_waddr_o     (rf_waddr_id_o),
+        .rf_ren_a_o     (rf_ren_a_dec),
+        .rf_ren_b_o     (rf_ren_b_dec),
 
-    // ALU
-    .alu_operator_o    (alu_operator),
-    .alu_op_a_mux_sel_o(alu_op_a_mux_sel_dec),
-    .alu_op_b_mux_sel_o(alu_op_b_mux_sel_dec),
-    .alu_multicycle_o  (alu_multicycle_dec),
+        .alu_operator_o    (alu_operator),
+        .alu_op_a_mux_sel_o(alu_op_a_mux_sel_dec),
+        .alu_op_b_mux_sel_o(alu_op_b_mux_sel_dec),
+        .alu_multicycle_o  (alu_multicycle_dec),
 
-    // MULT & DIV
-    .mult_en_o            (mult_en_dec),
-    .div_en_o             (div_en_dec),
-    .mult_sel_o           (mult_sel_ex_o),
-    .div_sel_o            (div_sel_ex_o),
-    .multdiv_operator_o   (multdiv_operator),
-    .multdiv_signed_mode_o(multdiv_signed_mode),
+        .mult_en_o            (mult_en_dec),
+        .div_en_o             (div_en_dec),
+        .mult_sel_o           (mult_sel_ex_o),
+        .div_sel_o            (div_sel_ex_o),
+        .multdiv_operator_o   (multdiv_operator),
+        .multdiv_signed_mode_o(multdiv_signed_mode),
 
-    // CSRs
-    .csr_access_o(csr_access_o),
-    .csr_op_o    (csr_op_o),
+        .csr_access_o(csr_access_o),
+        .csr_op_o    (csr_op_o),
 
-    // LSU
-    .data_req_o           (lsu_req_dec),
-    .data_we_o            (lsu_we),
-    .data_type_o          (lsu_type),
-    .data_sign_extension_o(lsu_sign_ext),
+        .data_req_o           (lsu_req_dec),
+        .data_we_o            (lsu_we),
+        .data_type_o          (lsu_type),
+        .data_sign_extension_o(lsu_sign_ext),
 
-    // jump/branches
-    .jump_in_dec_o  (jump_in_dec),
-    .branch_in_dec_o(branch_in_dec)
-  );
+        .jump_in_dec_o (jump_in_dec),
+        .branch_in_dec_o(branch_in_dec),
+
+        .min_err_o(dec_min_err), 
+        .maj_err_o(dec_maj_err)
+      );
+    end else begin : g_dec_single
+
+      `KEEP_DECODER
+      ibex_decoder #(
+        .RV32E          (RV32E),
+        .RV32M          (RV32M),
+        .RV32B          (RV32B),
+        .BranchTargetALU(BranchTargetALU)
+      ) decoder_i (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+
+        // controller
+        .illegal_insn_o(illegal_insn_dec),
+        .ebrk_insn_o   (ebrk_insn),
+        .mret_insn_o   (mret_insn_dec),
+        .dret_insn_o   (dret_insn_dec),
+        .ecall_insn_o  (ecall_insn_dec),
+        .wfi_insn_o    (wfi_insn_dec),
+        .jump_set_o    (jump_set_dec),
+        .branch_taken_i(branch_taken),
+        .icache_inval_o(icache_inval_o),
+
+        // from IF-ID pipeline register
+        .instr_first_cycle_i(instr_first_cycle),
+        .instr_rdata_i      (instr_rdata_i),
+        .instr_rdata_alu_i  (instr_rdata_alu_i),
+        .illegal_c_insn_i   (illegal_c_insn_i),
+
+        // immediates
+        .imm_a_mux_sel_o(imm_a_mux_sel),
+        .imm_b_mux_sel_o(imm_b_mux_sel_dec),
+        .bt_a_mux_sel_o (bt_a_mux_sel),
+        .bt_b_mux_sel_o (bt_b_mux_sel),
+
+        .imm_i_type_o   (imm_i_type),
+        .imm_s_type_o   (imm_s_type),
+        .imm_b_type_o   (imm_b_type),
+        .imm_u_type_o   (imm_u_type),
+        .imm_j_type_o   (imm_j_type),
+        .zimm_rs1_type_o(zimm_rs1_type),
+
+        // register file
+        .rf_wdata_sel_o(rf_wdata_sel),
+        .rf_we_o       (rf_we_dec),
+
+        .rf_raddr_a_o(rf_raddr_a_o),
+        .rf_raddr_b_o(rf_raddr_b_o),
+        .rf_waddr_o  (rf_waddr_id_o),
+        .rf_ren_a_o  (rf_ren_a_dec),
+        .rf_ren_b_o  (rf_ren_b_dec),
+
+        // ALU
+        .alu_operator_o    (alu_operator),
+        .alu_op_a_mux_sel_o(alu_op_a_mux_sel_dec),
+        .alu_op_b_mux_sel_o(alu_op_b_mux_sel_dec),
+        .alu_multicycle_o  (alu_multicycle_dec),
+
+        // MULT & DIV
+        .mult_en_o            (mult_en_dec),
+        .div_en_o             (div_en_dec),
+        .mult_sel_o           (mult_sel_ex_o),
+        .div_sel_o            (div_sel_ex_o),
+        .multdiv_operator_o   (multdiv_operator),
+        .multdiv_signed_mode_o(multdiv_signed_mode),
+
+        // CSRs
+        .csr_access_o(csr_access_o),
+        .csr_op_o    (csr_op_o),
+
+        // LSU
+        .data_req_o           (lsu_req_dec),
+        .data_we_o            (lsu_we),
+        .data_type_o          (lsu_type),
+        .data_sign_extension_o(lsu_sign_ext),
+
+        // jump/branches
+        .jump_in_dec_o  (jump_in_dec),
+        .branch_in_dec_o(branch_in_dec),
+
+        // Error aggregation outputs
+        .decoder_new_maj_err_o(decoder_new_maj_err),
+        .decoder_new_min_err_o(decoder_new_min_err),
+        .decoder_scrub_occurred_o(decoder_scrub_occurred)
+
+        `ifdef FATORI_FI
+          ,.fi_port(fi_port)
+        `endif
+      );
+    end
+  endgenerate
+  
+  // Declare decoder child error signals (must be outside generate for module-wide scope)
+  // Connect or tie off based on whether decoder was instantiated
+  // (signals are driven within the generate block above)
+  logic decoder_new_maj_err, decoder_new_min_err, decoder_scrub_occurred;
+  
 
   /////////////////////////////////
   // CSR-related pipeline flushes //
@@ -560,99 +671,227 @@ module ibex_id_stage #(
 
   assign mem_resp_intg_err = lsu_load_resp_intg_err_i | lsu_store_resp_intg_err_i;
 
-  ibex_controller #(
-    .WritebackStage (WritebackStage),
-    .BranchPredictor(BranchPredictor),
-    .MemECC(MemECC)
-  ) controller_i (
-    .clk_i (clk_i),
-    .rst_ni(rst_ni),
+  generate
+    if (`CONTROLLER_MON_N > 1) begin : g_ctrl_mon
+      
+      `KEEP_CONTROLLER
+      fatori_mon_wrap_controller #(
+        .N   (`CONTROLLER_MON_N),
+        .M   (`CONTROLLER_MON_M),
+        .HOLD(`CONTROLLER_MON_HOLD),
 
-    .ctrl_busy_o(ctrl_busy_o),
+        .WritebackStage  (WritebackStage),
+        .BranchPredictor (BranchPredictor),
+        .MemECC          (MemECC)
+      ) controller_mon (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
 
-    // decoder related signals
-    .illegal_insn_i  (illegal_insn_o),
-    .ecall_insn_i    (ecall_insn_dec),
-    .mret_insn_i     (mret_insn_dec),
-    .dret_insn_i     (dret_insn_dec),
-    .wfi_insn_i      (wfi_insn_dec),
-    .ebrk_insn_i     (ebrk_insn),
-    .csr_pipe_flush_i(csr_pipe_flush),
+        .ctrl_busy_o(ctrl_busy_o),
 
-    // from IF-ID pipeline
-    .instr_valid_i          (instr_valid_i),
-    .instr_i                (instr_rdata_i),
-    .instr_compressed_i     (instr_rdata_c_i),
-    .instr_is_compressed_i  (instr_is_compressed_i),
-    .instr_bp_taken_i       (instr_bp_taken_i),
-    .instr_fetch_err_i      (instr_fetch_err_i),
-    .instr_fetch_err_plus2_i(instr_fetch_err_plus2_i),
-    .pc_id_i                (pc_id_i),
+        // decoder related signals
+        .illegal_insn_i  (illegal_insn_o),
+        .ecall_insn_i    (ecall_insn_dec),
+        .mret_insn_i     (mret_insn_dec),
+        .dret_insn_i     (dret_insn_dec),
+        .wfi_insn_i      (wfi_insn_dec),
+        .ebrk_insn_i     (ebrk_insn),
+        .csr_pipe_flush_i(csr_pipe_flush),
 
-    // to IF-ID pipeline
-    .instr_valid_clear_o(instr_valid_clear_o),
-    .id_in_ready_o      (id_in_ready_o),
-    .controller_run_o   (controller_run),
-    .instr_exec_i       (instr_exec_i),
+        // from IF-ID pipeline
+        .instr_valid_i          (instr_valid_i),
+        .instr_i                (instr_rdata_i),
+        .instr_compressed_i     (instr_rdata_c_i),
+        .instr_is_compressed_i  (instr_is_compressed_i),
+        .instr_bp_taken_i       (instr_bp_taken_i),
+        .instr_fetch_err_i      (instr_fetch_err_i),
+        .instr_fetch_err_plus2_i(instr_fetch_err_plus2_i),
+        .pc_id_i                (pc_id_i),
 
-    // to prefetcher
-    .instr_req_o           (instr_req_o),
-    .pc_set_o              (pc_set_o),
-    .pc_mux_o              (pc_mux_o),
-    .nt_branch_mispredict_o(nt_branch_mispredict_o),
-    .exc_pc_mux_o          (exc_pc_mux_o),
-    .exc_cause_o           (exc_cause_o),
+        // to IF-ID pipeline
+        .instr_valid_clear_o(instr_valid_clear_o),
+        .id_in_ready_o      (id_in_ready_o),
+        .controller_run_o   (controller_run),
+        .instr_exec_i       (instr_exec_i),
 
-    // LSU
-    .lsu_addr_last_i    (lsu_addr_last_i),
-    .load_err_i         (lsu_load_err_i),
-    .mem_resp_intg_err_i(mem_resp_intg_err),
-    .store_err_i        (lsu_store_err_i),
-    .wb_exception_o     (wb_exception),
-    .id_exception_o     (id_exception),
+        // to prefetcher
+        .instr_req_o           (instr_req_o),
+        .pc_set_o              (pc_set_o),
+        .pc_mux_o              (pc_mux_o),
+        .nt_branch_mispredict_o(nt_branch_mispredict_o),
+        .exc_pc_mux_o          (exc_pc_mux_o),
+        .exc_cause_o           (exc_cause_o),
 
-    // jump/branch control
-    .branch_set_i     (branch_set),
-    .branch_not_set_i (branch_not_set),
-    .jump_set_i       (jump_set),
+        // LSU
+        .lsu_addr_last_i    (lsu_addr_last_i),
+        .load_err_i         (lsu_load_err_i),
+        .mem_resp_intg_err_i(mem_resp_intg_err),
+        .store_err_i        (lsu_store_err_i),
+        .wb_exception_o     (wb_exception),
+        .id_exception_o     (id_exception),
 
-    // interrupt signals
-    .csr_mstatus_mie_i(csr_mstatus_mie_i),
-    .irq_pending_i    (irq_pending_i),
-    .irqs_i           (irqs_i),
-    .irq_nm_ext_i     (irq_nm_i),
-    .nmi_mode_o       (nmi_mode_o),
+        // jump/branch control
+        .branch_set_i     (branch_set),
+        .branch_not_set_i (branch_not_set),
+        .jump_set_i       (jump_set),
 
-    // CSR Controller Signals
-    .csr_save_if_o        (csr_save_if_o),
-    .csr_save_id_o        (csr_save_id_o),
-    .csr_save_wb_o        (csr_save_wb_o),
-    .csr_restore_mret_id_o(csr_restore_mret_id_o),
-    .csr_restore_dret_id_o(csr_restore_dret_id_o),
-    .csr_save_cause_o     (csr_save_cause_o),
-    .csr_mtval_o          (csr_mtval_o),
-    .priv_mode_i          (priv_mode_i),
+        // interrupt signals
+        .csr_mstatus_mie_i(csr_mstatus_mie_i),
+        .irq_pending_i    (irq_pending_i),
+        .irqs_i           (irqs_i),
+        .irq_nm_ext_i     (irq_nm_i),
+        .nmi_mode_o       (nmi_mode_o),
 
-    // Debug Signal
-    .debug_mode_o         (debug_mode_o),
-    .debug_mode_entering_o(debug_mode_entering_o),
-    .debug_cause_o        (debug_cause_o),
-    .debug_csr_save_o     (debug_csr_save_o),
-    .debug_req_i          (debug_req_i),
-    .debug_single_step_i  (debug_single_step_i),
-    .debug_ebreakm_i      (debug_ebreakm_i),
-    .debug_ebreaku_i      (debug_ebreaku_i),
-    .trigger_match_i      (trigger_match_i),
+        // CSR Controller Signals
+        .csr_save_if_o        (csr_save_if_o),
+        .csr_save_id_o        (csr_save_id_o),
+        .csr_save_wb_o        (csr_save_wb_o),
+        .csr_restore_mret_id_o(csr_restore_mret_id_o),
+        .csr_restore_dret_id_o(csr_restore_dret_id_o),
+        .csr_save_cause_o     (csr_save_cause_o),
+        .csr_mtval_o          (csr_mtval_o),
+        .priv_mode_i          (priv_mode_i),
 
-    .stall_id_i(stall_id),
-    .stall_wb_i(stall_wb),
-    .flush_id_o(flush_id),
-    .ready_wb_i(ready_wb_i),
+        // Debug Signal
+        .debug_mode_o         (debug_mode_o),
+        .debug_mode_entering_o(debug_mode_entering_o),
+        .debug_cause_o        (debug_cause_o),
+        .debug_csr_save_o     (debug_csr_save_o),
+        .debug_req_i          (debug_req_i),
+        .debug_single_step_i  (debug_single_step_i),
+        .debug_ebreakm_i      (debug_ebreakm_i),
+        .debug_ebreaku_i      (debug_ebreaku_i),
+        .trigger_match_i      (trigger_match_i),
 
-    // Performance Counters
-    .perf_jump_o   (perf_jump_o),
-    .perf_tbranch_o(perf_tbranch_o)
-  );
+        .stall_id_i(stall_id),
+        .stall_wb_i(stall_wb),
+        .flush_id_o(flush_id),
+        .ready_wb_i(ready_wb_i),
+
+        // Performance Counters
+        .perf_jump_o   (perf_jump_o),
+        .perf_tbranch_o(perf_tbranch_o),
+
+        .min_err_o(ctrl_min_err),
+        .maj_err_o(ctrl_maj_err)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
+      );
+    end else begin : g_ctrl_single
+      
+      `KEEP_CONTROLLER
+      ibex_controller #(
+        .WritebackStage (WritebackStage),
+        .BranchPredictor(BranchPredictor),
+        .MemECC         (MemECC)
+      ) controller_i (
+        .clk_i (clk_i),
+        .rst_ni(rst_ni),
+
+        .ctrl_busy_o(ctrl_busy_o),
+
+        // decoder related signals
+        .illegal_insn_i  (illegal_insn_o),
+        .ecall_insn_i    (ecall_insn_dec),
+        .mret_insn_i     (mret_insn_dec),
+        .dret_insn_i     (dret_insn_dec),
+        .wfi_insn_i      (wfi_insn_dec),
+        .ebrk_insn_i     (ebrk_insn),
+        .csr_pipe_flush_i(csr_pipe_flush),
+
+        // from IF-ID pipeline
+        .instr_valid_i          (instr_valid_i),
+        .instr_i                (instr_rdata_i),
+        .instr_compressed_i     (instr_rdata_c_i),
+        .instr_is_compressed_i  (instr_is_compressed_i),
+        .instr_bp_taken_i       (instr_bp_taken_i),
+        .instr_fetch_err_i      (instr_fetch_err_i),
+        .instr_fetch_err_plus2_i(instr_fetch_err_plus2_i),
+        .pc_id_i                (pc_id_i),
+
+        // to IF-ID pipeline
+        .instr_valid_clear_o(instr_valid_clear_o),
+        .id_in_ready_o      (id_in_ready_o),
+        .controller_run_o   (controller_run),
+        .instr_exec_i       (instr_exec_i),
+
+        // to prefetcher
+        .instr_req_o           (instr_req_o),
+        .pc_set_o              (pc_set_o),
+        .pc_mux_o              (pc_mux_o),
+        .nt_branch_mispredict_o(nt_branch_mispredict_o),
+        .exc_pc_mux_o          (exc_pc_mux_o),
+        .exc_cause_o           (exc_cause_o),
+
+        // LSU
+        .lsu_addr_last_i    (lsu_addr_last_i),
+        .load_err_i         (lsu_load_err_i),
+        .mem_resp_intg_err_i(mem_resp_intg_err),
+        .store_err_i        (lsu_store_err_i),
+        .wb_exception_o     (wb_exception),
+        .id_exception_o     (id_exception),
+
+        // jump/branch control
+        .branch_set_i     (branch_set),
+        .branch_not_set_i (branch_not_set),
+        .jump_set_i       (jump_set),
+
+        // interrupt signals
+        .csr_mstatus_mie_i(csr_mstatus_mie_i),
+        .irq_pending_i    (irq_pending_i),
+        .irqs_i           (irqs_i),
+        .irq_nm_ext_i     (irq_nm_i),
+        .nmi_mode_o       (nmi_mode_o),
+
+        // CSR Controller Signals
+        .csr_save_if_o        (csr_save_if_o),
+        .csr_save_id_o        (csr_save_id_o),
+        .csr_save_wb_o        (csr_save_wb_o),
+        .csr_restore_mret_id_o(csr_restore_mret_id_o),
+        .csr_restore_dret_id_o(csr_restore_dret_id_o),
+        .csr_save_cause_o     (csr_save_cause_o),
+        .csr_mtval_o          (csr_mtval_o),
+        .priv_mode_i          (priv_mode_i),
+
+        // Debug Signal
+        .debug_mode_o         (debug_mode_o),
+        .debug_mode_entering_o(debug_mode_entering_o),
+        .debug_cause_o        (debug_cause_o),
+        .debug_csr_save_o     (debug_csr_save_o),
+        .debug_req_i          (debug_req_i),
+        .debug_single_step_i  (debug_single_step_i),
+        .debug_ebreakm_i      (debug_ebreakm_i),
+        .debug_ebreaku_i      (debug_ebreaku_i),
+        .trigger_match_i      (trigger_match_i),
+
+        .stall_id_i(stall_id),
+        .stall_wb_i(stall_wb),
+        .flush_id_o(flush_id),
+        .ready_wb_i(ready_wb_i),
+
+        // Performance Counters
+        .perf_jump_o   (perf_jump_o),
+        .perf_tbranch_o(perf_tbranch_o),
+
+        // Error aggregation outputs
+        .controller_new_maj_err_o(controller_new_maj_err),
+        .controller_new_min_err_o(controller_new_min_err),
+        .controller_scrub_occurred_o(controller_scrub_occurred)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
+      );
+
+      assign ctrl_min_err = 1'b0;
+      assign ctrl_maj_err = 1'b0;
+    end
+  endgenerate
+
+  // Declare controller child error signals (must be outside generate for module-wide scope)
+  logic controller_new_maj_err, controller_new_min_err, controller_scrub_occurred;
 
   assign multdiv_en_dec   = mult_en_dec | div_en_dec;
 
@@ -697,7 +936,7 @@ module ibex_id_stage #(
     // (condition pass/fail used next cycle where branch target is calculated)
     logic branch_set_raw_q;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_set_raw_d, branch_set_raw_q, branch_set_raw)
+    `FATORI_REG('0, !rst_ni, '1, branch_set_raw_d, branch_set_raw_q, fi_port, 8'd95, '0, '0, branch_set_raw)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -719,7 +958,7 @@ module ibex_id_stage #(
   assign branch_jump_set_done_d = (branch_set_raw | jump_set_raw | branch_jump_set_done_q) &
     ~instr_valid_clear_o;
 
-  `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_jump_set_done_d, branch_jump_set_done_q, branch_jump_set_done)
+  `FATORI_REG('0, !rst_ni, '1, branch_jump_set_done_d, branch_jump_set_done_q, fi_port, 8'd96, '0, '0, branch_jump_set_done)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -745,7 +984,7 @@ module ibex_id_stage #(
     // SEC_CM: CORE.DATA_REG_SW.SCA
     logic branch_taken_q;
 
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, branch_decision_i, branch_taken_q, branch_taken)
+    `FATORI_REG('0, !rst_ni, '1, branch_decision_i, branch_taken_q, fi_port, 8'd97, '0, '0, branch_taken)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -788,7 +1027,8 @@ module ibex_id_stage #(
   typedef enum logic { FIRST_CYCLE, MULTI_CYCLE } id_fsm_e;
   id_fsm_e id_fsm_q, id_fsm_d;
 
-  `IOB_REG_TMR_ENUM(id_fsm_e, FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, id_fsm_q)
+  //`FATORI_REG(FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, fi_port, 8'd98, '0, '0, id_fsm_q)
+  `FATORI_REG_ENUM(id_fsm_e,FIRST_CYCLE, !rst_ni, instr_executing, id_fsm_d, id_fsm_q, fi_port, 8'd98, '0, '0, id_fsm_q)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin : id_pipeline_reg
   //   if (!rst_ni) begin
@@ -1177,5 +1417,112 @@ module ibex_id_stage #(
   `ifdef CHECK_MISALIGNED
   `ASSERT(IbexMisalignedMemoryAccess, !lsu_addr_incr_req_i)
   `endif
+
+// ============================================================
+  // Error Aggregation (OR own register error pulses only - Part 1)
+  // ============================================================
+  generate
+    if (BranchTargetALU && !DataIndTiming) begin : g_err_agg_btalu_direct
+      if (DataIndTiming) begin : g_with_branch_taken
+        assign id_stage_new_maj_err_o = imd_val_q_reg_0_new_maj_err |
+                                         imd_val_q_reg_1_new_maj_err |
+                                         branch_jump_set_done_new_maj_err |
+                                         g_sec_branch_taken.branch_taken_new_maj_err |
+                                         id_fsm_q_new_maj_err |
+                                         decoder_new_maj_err |
+                                         controller_new_maj_err;
+        
+        assign id_stage_new_min_err_o = imd_val_q_reg_0_new_min_err |
+                                         imd_val_q_reg_1_new_min_err |
+                                         branch_jump_set_done_new_min_err |
+                                         g_sec_branch_taken.branch_taken_new_min_err |
+                                         id_fsm_q_new_min_err |
+                                         decoder_new_min_err |
+                                         controller_new_min_err;
+        
+        assign id_stage_scrub_occurred_o = imd_val_q_reg_0_scrub_occurred |
+                                            imd_val_q_reg_1_scrub_occurred |
+                                            branch_jump_set_done_scrub_occurred |
+                                            g_sec_branch_taken.branch_taken_scrub_occurred |
+                                            id_fsm_q_scrub_occurred |
+                                            decoder_scrub_occurred |
+                                            controller_scrub_occurred;
+      end else begin : g_no_branch_taken
+        assign id_stage_new_maj_err_o = imd_val_q_reg_0_new_maj_err |
+                                         imd_val_q_reg_1_new_maj_err |
+                                         branch_jump_set_done_new_maj_err |
+                                         id_fsm_q_new_maj_err |
+                                         decoder_new_maj_err |
+                                         controller_new_maj_err;
+        
+        assign id_stage_new_min_err_o = imd_val_q_reg_0_new_min_err |
+                                         imd_val_q_reg_1_new_min_err |
+                                         branch_jump_set_done_new_min_err |
+                                         id_fsm_q_new_min_err |
+                                         decoder_new_min_err |
+                                         controller_new_min_err;
+        
+        assign id_stage_scrub_occurred_o = imd_val_q_reg_0_scrub_occurred |
+                                            imd_val_q_reg_1_scrub_occurred |
+                                            branch_jump_set_done_scrub_occurred |
+                                            id_fsm_q_scrub_occurred |
+                                            decoder_scrub_occurred |
+                                            controller_scrub_occurred;
+      end
+    end else begin : g_err_agg_with_branch_set_raw
+      if (DataIndTiming) begin : g_with_branch_taken
+        assign id_stage_new_maj_err_o = imd_val_q_reg_0_new_maj_err |
+                                         imd_val_q_reg_1_new_maj_err |
+                                         g_branch_set_flop.branch_set_raw_new_maj_err |
+                                         branch_jump_set_done_new_maj_err |
+                                         g_sec_branch_taken.branch_taken_new_maj_err |
+                                         id_fsm_q_new_maj_err |
+                                         decoder_new_maj_err |
+                                         controller_new_maj_err;
+        
+        assign id_stage_new_min_err_o = imd_val_q_reg_0_new_min_err |
+                                         imd_val_q_reg_1_new_min_err |
+                                         g_branch_set_flop.branch_set_raw_new_min_err |
+                                         branch_jump_set_done_new_min_err |
+                                         g_sec_branch_taken.branch_taken_new_min_err |
+                                         id_fsm_q_new_min_err |
+                                         decoder_new_min_err |
+                                         controller_new_min_err;
+        
+        assign id_stage_scrub_occurred_o = imd_val_q_reg_0_scrub_occurred |
+                                            imd_val_q_reg_1_scrub_occurred |
+                                            g_branch_set_flop.branch_set_raw_scrub_occurred |
+                                            branch_jump_set_done_scrub_occurred |
+                                            g_sec_branch_taken.branch_taken_scrub_occurred |
+                                            id_fsm_q_scrub_occurred |
+                                            decoder_scrub_occurred |
+                                            controller_scrub_occurred;
+      end else begin : g_no_branch_taken
+        assign id_stage_new_maj_err_o = imd_val_q_reg_0_new_maj_err |
+                                         imd_val_q_reg_1_new_maj_err |
+                                         g_branch_set_flop.branch_set_raw_new_maj_err |
+                                         branch_jump_set_done_new_maj_err |
+                                         id_fsm_q_new_maj_err |
+                                         decoder_new_maj_err |
+                                         controller_new_maj_err;
+        
+        assign id_stage_new_min_err_o = imd_val_q_reg_0_new_min_err |
+                                         imd_val_q_reg_1_new_min_err |
+                                         g_branch_set_flop.branch_set_raw_new_min_err |
+                                         branch_jump_set_done_new_min_err |
+                                         id_fsm_q_new_min_err |
+                                         decoder_new_min_err |
+                                         controller_new_min_err;
+        
+        assign id_stage_scrub_occurred_o = imd_val_q_reg_0_scrub_occurred |
+                                            imd_val_q_reg_1_scrub_occurred |
+                                            g_branch_set_flop.branch_set_raw_scrub_occurred |
+                                            branch_jump_set_done_scrub_occurred |
+                                            id_fsm_q_scrub_occurred |
+                                            decoder_scrub_occurred |
+                                            controller_scrub_occurred;
+      end
+    end
+  endgenerate
 
 endmodule

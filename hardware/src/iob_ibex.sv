@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
 `include "iob_ibex_conf.vh"
 `include "prim_assert.sv"
-`include "fatori_tmr_config.svh"
 
 module iob_ibex import ibex_pkg::*; #(
    parameter AXI_ID_W         = `IOB_IBEX_AXI_ID_W,
@@ -111,7 +110,33 @@ module iob_ibex import ibex_pkg::*; #(
    output [            32-1:0] plic_iob_rdata_o,
    output                      plic_iob_ready_o,
    // plic_interrupts_i
-   input  [            32-1:0] plic_interrupts_i
+   input  [            32-1:0] plic_interrupts_i,
+   
+   // UART1 for fault injection (unconditional, handled internally)
+   input  logic                uart1_rxd_i,
+   output logic                uart1_txd_o
+  
+  // FATORI Fault Tolerance Metrics Outputs (gated by FT_LAYER)
+  `ifdef FATORI_FT_LAYER_1
+    ,output logic [15:0]     fatori_minor_cnt_o
+    ,output logic [15:0]     fatori_major_cnt_o
+    
+    `ifdef FATORI_FT_LAYER_2
+      ,output logic [15:0]     fatori_corrected_cnt_o
+      
+      `ifdef FATORI_FT_LAYER_3
+        ,output logic [31:0]     fatori_cycles_to_first_min_o
+        ,output logic [31:0]     fatori_cycles_to_first_maj_o
+        ,output logic [15:0]     fatori_last_detection_latency_o
+        
+        `ifdef FATORI_FT_LAYER_4
+          ,output logic [31:0]     fatori_latency_sum_o
+          ,output logic [15:0]     fatori_latency_count_o
+        `endif
+      `endif
+    `endif
+  `endif
+
 );
 
 
@@ -261,6 +286,73 @@ module iob_ibex import ibex_pkg::*; #(
    );
 
 
+   // =========================================================================
+   // FAULT INJECTION INFRASTRUCTURE (FATORI_FI only)
+   // =========================================================================
+   `ifdef FATORI_FI
+     // Internal fi_port from fi_coms
+     logic [7:0] fi_port;
+     
+     // Injection pulse generation (from fi_coms for Layer 3+ metrics)
+     `ifdef FATORI_FT_LAYER_1
+       `ifdef FATORI_FT_LAYER_2
+         `ifdef FATORI_FT_LAYER_3
+           logic       reg_injection_pulse_from_coms;
+           logic       logic_injection_pulse_from_coms;
+           logic       reg_injection_pulse;
+           logic       logic_injection_pulse;
+           
+           // Use pulses directly from fi_coms (already edge-detected at command level)
+           assign reg_injection_pulse = reg_injection_pulse_from_coms;
+           assign logic_injection_pulse = logic_injection_pulse_from_coms;
+         `endif
+       `endif
+     `endif
+     
+     // =========================================================================
+     // Fault Injection Communications Controller
+     // =========================================================================
+     logic       sem_uart_rx_wire;
+     logic       sem_uart_tx_wire;
+     
+     fi_coms #(
+       .CLOCK_FREQ_HZ(60_000_000),  // 60 MHz system clock
+       .BAUD_RATE(115_200),       // 1.25 Mbaud for high-speed injection
+       .DEBUG(0),                   // Minimal debug
+       .ACK(0)                      // No ACK messages
+     ) u_fi_coms (
+       .clk         (clk_i),
+       .rst         (arst_i),
+       .uart_rx     (uart1_rxd_i),
+       .uart_tx     (uart1_txd_o),
+       .sem_uart_rx (sem_uart_rx_wire),
+       .sem_uart_tx (sem_uart_tx_wire),
+       .fi_port     (fi_port)
+       
+       `ifdef FATORI_FT_LAYER_1
+         `ifdef FATORI_FT_LAYER_2
+           `ifdef FATORI_FT_LAYER_3
+             ,.reg_injection_pulse   (reg_injection_pulse_from_coms)
+             ,.logic_injection_pulse (logic_injection_pulse_from_coms)
+           `endif
+         `endif
+       `endif
+     );
+     
+     // =========================================================================
+     // SEM Ultra IP Example Design (Soft Error Mitigation & Injection)
+     // =========================================================================
+     sem_ultra_0_example_design u_sem_example (
+       .clk     (clk_i),
+       .uart_tx (sem_uart_tx_wire),
+       .uart_rx (sem_uart_rx_wire)
+     );
+   `else
+     // Stub UART1 when FATORI_FI is disabled
+     assign uart1_txd_o = 1'b1;  // UART idle state
+   `endif
+
+
 
    // ---- Ibex alert/status wires
    logic        alert_minor;
@@ -269,6 +361,11 @@ module iob_ibex import ibex_pkg::*; #(
    logic        double_fault_seen;
    logic        core_sleep;
    crash_dump_t crash_dump;
+   logic        top_new_maj_err;
+   logic        top_new_min_err;
+   logic        top_scrub_occurred;
+
+   // ---- Fetch-enable (multi-bit) and optional reset request
 
    // ---- Fetch-enable (multi-bit) and optional reset request
    ibex_mubi_t  fetch_enable_core;
@@ -279,23 +376,23 @@ module iob_ibex import ibex_pkg::*; #(
    * Some parameters' definitions
    */
 
-   parameter bit RV32E = 1'b0;
-   parameter ibex_pkg::rv32m_e RV32M = ibex_pkg::RV32MNone;
-   parameter ibex_pkg::rv32b_e RV32B = ibex_pkg::RV32BNone;
-   parameter ibex_pkg::regfile_e RegFile = ibex_pkg::RegFileFF;
-   parameter bit BranchTargetALU = 1'b0;
-   parameter bit WritebackStage = 1'b0;
-   parameter bit ICache = 1'b1;
-   parameter bit ICacheECC = `FTM_ICACHE_ECC;
+   parameter bit RV32E = `FATORI_RV32E;
+   parameter ibex_pkg::rv32m_e RV32M = `FATORI_RV32M;
+   parameter ibex_pkg::rv32b_e RV32B = `FATORI_RV32B ;
+   parameter ibex_pkg::regfile_e RegFile = `FATORI_REGFILE;
+   parameter bit BranchTargetALU = `FATORI_BRANCH_TALU;
+   parameter bit WritebackStage = `FATORI_WSTAGE;
+   parameter bit ICache = `FATORI_ICACHE;
+   parameter bit ICacheECC = `FATORI_ICACHE_ECC;
    parameter bit ICacheScramble = 1'b0;
-   parameter bit BranchPredictor = 1'b0;
-   parameter bit DbgTriggerEn = 1'b1;
-   parameter bit SecureIbex = 1'b1;
-   parameter bit PMPEnable = 1'b1;
+   parameter bit BranchPredictor = `FATORI_BRANCH_PRED;
+   parameter bit DbgTriggerEn = 1'b0;
+   parameter bit SecureIbex = 1'b1; //UNUSED
+   parameter bit PMPEnable = `FATORI_PMP;
    parameter int unsigned PMPGranularity = 0;
    parameter int unsigned PMPNumRegions = 16;
-   parameter int unsigned MHPMCounterNum = 10;
-   parameter int unsigned MHPMCounterWidth = 32;
+   parameter int unsigned MHPMCounterNum = `FATORI_MHPMCOUNTER_NUM;
+   parameter int unsigned MHPMCounterWidth = `FATORI_MHPMCOUNTER_W;
    parameter SRAMInitFile = "";
 
    /**
@@ -378,20 +475,71 @@ module iob_ibex import ibex_pkg::*; #(
 
       // Status (outputs) to fault manager
       .core_sleep_o            (core_sleep),
-      .crash_dump_o            (crash_dump)
+      .crash_dump_o            (crash_dump),
+      
+      // Error aggregation outputs
+      .top_new_maj_err_o       (top_new_maj_err),
+      .top_new_min_err_o       (top_new_min_err),
+      .top_scrub_occurred_o    (top_scrub_occurred)
+      
+      // FATORI Metrics inputs (from fault_mgr to CSRs)
+      `ifdef FATORI_FT_LAYER_1
+         ,.fatori_minor_cnt_i(fatori_minor_cnt)
+         ,.fatori_major_cnt_i(fatori_major_cnt)
+         
+         `ifdef FATORI_FT_LAYER_2
+            ,.fatori_corrected_cnt_i(fatori_corrected_cnt)
+            
+            `ifdef FATORI_FT_LAYER_3
+               ,.fatori_cycles_to_first_min_i(fatori_cycles_to_first_min)
+               ,.fatori_cycles_to_first_maj_i(fatori_cycles_to_first_maj)
+               ,.fatori_last_detection_latency_i(fatori_last_detection_latency)
+               
+               `ifdef FATORI_FT_LAYER_4
+                  ,.fatori_latency_sum_i(fatori_latency_sum)
+                  ,.fatori_latency_count_i(fatori_latency_count)
+               `endif
+            `endif
+         `endif
+      `endif
+
+      `ifdef FATORI_FI
+         ,.fi_port(fi_port)
+      `endif
    );
 
+   // FATORI Fault Tolerance Metrics Wires (gated by FT_LAYER)
+   `ifdef FATORI_FT_LAYER_1
+     wire [15:0] fatori_minor_cnt;
+     wire [15:0] fatori_major_cnt;
+     
+     `ifdef FATORI_FT_LAYER_2
+       wire [15:0] fatori_corrected_cnt;
+       
+       `ifdef FATORI_FT_LAYER_3
+         wire [31:0] fatori_cycles_to_first_min;
+         wire [31:0] fatori_cycles_to_first_maj;
+         wire [15:0] fatori_last_detection_latency;
+         
+         `ifdef FATORI_FT_LAYER_4
+           wire [31:0] fatori_latency_sum;
+           wire [15:0] fatori_latency_count;
+         `endif
+       `endif
+     `endif
+   `endif
 
-
-   // ===== Fault manager (optional) =====
+   // ===== Fault manager =====
    generate
-   if (`FTM_FAULT_MGR) begin : g_fault_mgr
+   if (`FATORI_FAULT_MGR) begin : g_fault_mgr
+
+      `KEEP_FAULT_MGR
       fatori_fault_mgr #(
-         .RESET_ON_MAJOR              (`FTM_RESET_ON_MAJOR),
-         .WAIT_CORE_SLEEP_BEFORE_RESET(`FTM_WAIT_SLEEP_BEFORE_RESET)
+         .RESET_ON_MAJOR              (`FATORI_RESET_ON_MAJOR),
+         .WAIT_CORE_SLEEP_BEFORE_RESET(`FATORI_WAIT_SLEEP_BEFORE_RESET)
       ) u_fault_mgr (
-         .clk_i            (clk_i),          // same clock as ibex_top
-         .rst_ni           (cpu_reset_neg),       // active-low reset
+         .clk_i            (clk_i),
+         .rst_ni           (cpu_reset_neg),
 
          // fault inputs from ibex_top
          .alert_minor_i           (alert_minor),
@@ -407,18 +555,99 @@ module iob_ibex import ibex_pkg::*; #(
          .fetch_enable_o   (fetch_enable_core),
          .core_reset_req_o (core_reset_req),
 
-         // optional SW/SoC observability (tie off if unused)
+         // SW/SoC observability - wired to outputs
          .fault_sticky_o   (/* unused */),
          .minor_seen_o     (/* unused */),
-         .minor_cnt_o      (/* unused */),
-         .major_cnt_o      (/* unused */)
+         `ifdef FATORI_FT_LAYER_1
+            .minor_cnt_o      (fatori_minor_cnt),
+            .major_cnt_o      (fatori_major_cnt)
+         `else
+            .minor_cnt_o      (/* unused */),
+            .major_cnt_o      (/* unused */)
+         `endif
+
+         `ifdef FATORI_FI
+            `ifdef FATORI_FT_LAYER_1
+               ,.agg_mon_new_min_err_i(top_new_min_err)
+               ,.agg_mon_new_maj_err_i(top_new_maj_err)
+               
+               `ifdef FATORI_FT_LAYER_2
+                  ,.agg_mon_scrub_occurred_i(top_scrub_occurred)
+                  
+                  `ifdef FATORI_FT_LAYER_3
+                     ,.reg_injection_pulse_i(reg_injection_pulse)
+                     ,.logic_injection_pulse_i(logic_injection_pulse)
+                  `endif
+               `endif
+            `endif
+         `endif
+
+         `ifdef FATORI_FT_LAYER_1
+            `ifdef FATORI_FT_LAYER_2
+               ,.corrected_cnt_o(fatori_corrected_cnt)
+               
+               `ifdef FATORI_FT_LAYER_3
+                  ,.cycles_to_first_min_o(fatori_cycles_to_first_min)
+                  ,.cycles_to_first_maj_o(fatori_cycles_to_first_maj)
+                  ,.last_detection_latency_o(fatori_last_detection_latency)
+                  
+                  `ifdef FATORI_FT_LAYER_4
+                     ,.latency_sum_o(fatori_latency_sum)
+                     ,.latency_count_o(fatori_latency_count)
+                  `endif
+               `endif
+            `endif
+         `endif
       );
    end else begin : g_no_fault_mgr
       // No manager: keep core enabled, no reset request
       assign fetch_enable_core = IbexMuBiOn;
       assign core_reset_req    = 1'b0;
+      
+      // Tie off fault metrics when no fault manager
+      `ifdef FATORI_FT_LAYER_1
+        assign fatori_minor_cnt = 16'd0;
+        assign fatori_major_cnt = 16'd0;
+        
+        `ifdef FATORI_FT_LAYER_2
+          assign fatori_corrected_cnt = 16'd0;
+          
+          `ifdef FATORI_FT_LAYER_3
+            assign fatori_cycles_to_first_min = 32'd0;
+            assign fatori_cycles_to_first_maj = 32'd0;
+            assign fatori_last_detection_latency = 16'd0;
+            
+            `ifdef FATORI_FT_LAYER_4
+              assign fatori_latency_sum = 32'd0;
+              assign fatori_latency_count = 16'd0;
+            `endif
+          `endif
+        `endif
+      `endif
    end
    endgenerate
+   
+   // Wire internal signals to module outputs
+   `ifdef FATORI_FT_LAYER_1
+     assign fatori_minor_cnt_o = fatori_minor_cnt;
+     assign fatori_major_cnt_o = fatori_major_cnt;
+     
+     `ifdef FATORI_FT_LAYER_2
+       assign fatori_corrected_cnt_o = fatori_corrected_cnt;
+       
+       `ifdef FATORI_FT_LAYER_3
+         assign fatori_cycles_to_first_min_o = fatori_cycles_to_first_min;
+         assign fatori_cycles_to_first_maj_o = fatori_cycles_to_first_maj;
+         assign fatori_last_detection_latency_o = fatori_last_detection_latency;
+         
+         `ifdef FATORI_FT_LAYER_4
+           assign fatori_latency_sum_o = fatori_latency_sum;
+           assign fatori_latency_count_o = fatori_latency_count;
+         `endif
+       `endif
+     `endif
+   `endif
+
 
    assign instr_addr_o          = instr_addr_int[31:2];
    assign data_addr_o           = data_addr_int[31:2];
@@ -448,10 +677,5 @@ module iob_ibex import ibex_pkg::*; #(
    assign ibus_axi_awaddr_o_int = {ibus_axi_awaddr_o, 2'b0};
    assign dbus_axi_araddr_o_int = {dbus_axi_araddr_o, 2'b0};
    assign dbus_axi_awaddr_o_int = {dbus_axi_awaddr_o, 2'b0};
-
-
-
-
-
 
 endmodule

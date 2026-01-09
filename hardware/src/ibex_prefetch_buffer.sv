@@ -36,7 +36,18 @@ module ibex_prefetch_buffer #(
   input  logic        instr_rvalid_i,
 
   // Prefetch Buffer Status
-  output logic        busy_o
+  output logic        busy_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic        prefetch_buffer_new_maj_err_o,
+  output logic        prefetch_buffer_new_min_err_o,
+  output logic        prefetch_buffer_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   localparam int unsigned NUM_REQS  = 2;
@@ -85,6 +96,8 @@ module ibex_prefetch_buffer #(
   // Overlay the fifo fill state with the outstanding requests to see if there is space.
   assign fifo_ready = ~&(fifo_busy | rdata_outstanding_rev);
 
+  logic fetch_fifo_new_maj_err, fetch_fifo_new_min_err, fetch_fifo_scrub_occurred;
+
   ibex_fetch_fifo #(
     .NUM_REQS (NUM_REQS),
     .ResetAll (ResetAll)
@@ -105,7 +118,15 @@ module ibex_prefetch_buffer #(
       .out_rdata_o           ( rdata_o           ),
       .out_addr_o            ( addr_o            ),
       .out_err_o             ( err_o             ),
-      .out_err_plus2_o       ( err_plus2_o       )
+      .out_err_plus2_o       ( err_plus2_o       ),
+      
+      .fetch_fifo_new_maj_err_o ( fetch_fifo_new_maj_err ),
+      .fetch_fifo_new_min_err_o ( fetch_fifo_new_min_err ),
+      .fetch_fifo_scrub_occurred_o ( fetch_fifo_scrub_occurred )
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
   );
 
   //////////////
@@ -147,7 +168,7 @@ module ibex_prefetch_buffer #(
   assign stored_addr_d = instr_addr;
 
   // CPU resets with a branch, so no need to reset these addresses
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, stored_addr_en, stored_addr_d, stored_addr_q, stored_addr)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, stored_addr_en, stored_addr_d, stored_addr_q, fi_port, 8'd146, '0, '0, stored_addr)
   // if (ResetAll) begin : g_stored_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //     if (!rst_ni) begin
@@ -172,7 +193,7 @@ module ibex_prefetch_buffer #(
                         // Current address + 4
                         {{29{1'b0}},(valid_new_req & ~valid_req_q),2'b00};
 
-  `IOB_REG_TMR($bits(fetch_addr_q), '0, '0, (ResetAll ? !rst_ni : '0), fetch_addr_en, fetch_addr_d, fetch_addr_q, fetch_addr)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), fetch_addr_en, fetch_addr_d, fetch_addr_q, fi_port, 8'd147, '0, '0, fetch_addr)
   // if (ResetAll) begin : g_fetch_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //     if (!rst_ni) begin
@@ -242,10 +263,10 @@ module ibex_prefetch_buffer #(
   // Registers //
   ///////////////
 
-  `IOB_REG_TMR($bits(valid_req_q),         '0, '0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         valid_req)
-  `IOB_REG_TMR($bits(discard_req_q),       '0, '0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       discard_req)
-  `IOB_REG_TMR($bits(rdata_outstanding_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, rdata_outstanding)
-  `IOB_REG_TMR($bits(branch_discard_q),    '0, '0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    branch_discard)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         fi_port, 8'd148, '0, '0, valid_req)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       fi_port, 8'd149, '0, '0, discard_req)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, fi_port, 8'd150, '0, '0, rdata_outstanding)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    fi_port, 8'd151, '0, '0, branch_discard)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -267,5 +288,32 @@ module ibex_prefetch_buffer #(
 
   assign instr_req_o  = valid_req;
   assign instr_addr_o = instr_addr_w_aligned;
+
+// ============================================================
+  // Error Aggregation (OR all register error pulses + child errors)
+  // ============================================================
+  assign prefetch_buffer_new_maj_err_o = stored_addr_new_maj_err |
+                                          fetch_addr_new_maj_err |
+                                          valid_req_new_maj_err |
+                                          discard_req_new_maj_err |
+                                          rdata_outstanding_new_maj_err |
+                                          branch_discard_new_maj_err |
+                                          fetch_fifo_new_maj_err;
+  
+  assign prefetch_buffer_new_min_err_o = stored_addr_new_min_err |
+                                          fetch_addr_new_min_err |
+                                          valid_req_new_min_err |
+                                          discard_req_new_min_err |
+                                          rdata_outstanding_new_min_err |
+                                          branch_discard_new_min_err |
+                                          fetch_fifo_new_min_err;
+  
+  assign prefetch_buffer_scrub_occurred_o = stored_addr_scrub_occurred |
+                                          fetch_addr_scrub_occurred |
+                                          valid_req_scrub_occurred |
+                                          discard_req_scrub_occurred |
+                                          rdata_outstanding_scrub_occurred |
+                                          branch_discard_scrub_occurred |
+                                          fetch_fifo_scrub_occurred;
 
 endmodule

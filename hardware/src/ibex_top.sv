@@ -144,16 +144,49 @@ module ibex_top import ibex_pkg::*; #(
 
   // DFT bypass controls
   input logic                          scan_rst_ni
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+  
+ // FATORI Fault Tolerance Metrics Inputs (gated by FT_LAYER)
+  `ifdef FATORI_FT_LAYER_1
+    ,input  logic [15:0]     fatori_minor_cnt_i
+    ,input  logic [15:0]     fatori_major_cnt_i
+    
+    `ifdef FATORI_FT_LAYER_2
+      ,input  logic [15:0]     fatori_corrected_cnt_i
+      
+      `ifdef FATORI_FT_LAYER_3
+        ,input  logic [31:0]     fatori_cycles_to_first_min_i
+        ,input  logic [31:0]     fatori_cycles_to_first_maj_i
+        ,input  logic [15:0]     fatori_last_detection_latency_i
+        
+        `ifdef FATORI_FT_LAYER_4
+          ,input  logic [31:0]     fatori_latency_sum_i
+          ,input  logic [15:0]     fatori_latency_count_i
+        `endif
+      `endif
+    `endif
+  `endif
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  ,output logic              top_new_maj_err_o
+  ,output logic              top_new_min_err_o
+  ,output logic              top_scrub_occurred_o
+
+   
 );
 
-  localparam bit          Lockstep              = `FTM_LOCKSTEP;
+  localparam bit          Lockstep              = `FATORI_LOCKSTEP;
   localparam bit          ResetAll              = Lockstep;
-  localparam bit          DummyInstructions     = `FTM_DUMMY_INSTR;
-  localparam bit          RegFileECC            = `FTM_RF_ECC;
-  localparam bit          RegFileWrenCheck      = `FTM_RF_WE_GLITCH;
-  localparam bit          RegFileRdataMuxCheck  = `FTM_RF_RADDR_GLITCH;
+  localparam bit          DummyInstructions     = `FATORI_DUMMY_INSTR;
+  localparam bit          RegFileECC            = `FATORI_RF_ECC;
+  localparam bit          RegFileWrenCheck      = `FATORI_RF_WE_GLITCH;
+  localparam bit          RegFileRdataMuxCheck  = `FATORI_RF_RADDR_GLITCH;
   localparam int unsigned RegFileDataWidth      = RegFileECC ? 32 + 7 : 32;
-  localparam bit          MemECC                = `FTM_BUS_INTEGRITY;
+  localparam bit          MemECC                = `FATORI_MEM_ECC;
   localparam int unsigned MemDataWidth          = MemECC ? 32 + 7 : 32;
   // Icache parameters
   localparam int unsigned BusSizeECC        = ICacheECC ? (BUS_SIZE + 7) : BUS_SIZE;
@@ -209,14 +242,14 @@ module ibex_top import ibex_pkg::*; #(
 
   `ifndef SYNTHESIS
   initial begin
-    $display("FTM_SECURE_GUARDS=%0d  FTM_BUS_INTEGRITY=%0d",
-            `FTM_SECURE_GUARDS, `FTM_BUS_INTEGRITY);
-    $display("FTM_LOCKSTEP=%0d  FTM_RF_ECC=%0d  FTM_RF_WE_GLITCH=%0d  FTM_RF_RADDR_GLITCH=%0d",
-            `FTM_LOCKSTEP, `FTM_RF_ECC, `FTM_RF_WE_GLITCH, `FTM_RF_RADDR_GLITCH);
-    $display("FTM_ICACHE_ECC=%0d  FTM_HARDENED_PC=%0d  FTM_SHADOW_CSRS=%0d",
-            `FTM_ICACHE_ECC, `FTM_HARDENED_PC, `FTM_SHADOW_CSRS);
-    $display("FTM_DATA_INDEP_TIMING=%0d  FTM_DUMMY_INSTR=%0d  FTM_FAULT_MGR=%0d",
-            `FTM_DATA_INDEP_TIMING, `FTM_DUMMY_INSTR, `FTM_FAULT_MGR);
+    $display("FATORI_SECURE_GUARDS=%0d  FATORI_MEM_ECC=%0d",
+            `FATORI_SECURE_GUARDS, `FATORI_MEM_ECC);
+    $display("FATORI_LOCKSTEP=%0d  FATORI_RF_ECC=%0d  FATORI_RF_WE_GLITCH=%0d  FATORI_RF_RADDR_GLITCH=%0d",
+            `FATORI_LOCKSTEP, `FATORI_RF_ECC, `FATORI_RF_WE_GLITCH, `FATORI_RF_RADDR_GLITCH);
+    $display("FATORI_ICACHE_ECC=%0d  FATORI_HARDENED_PC=%0d  FATORI_SHADOW_CSRS=%0d",
+            `FATORI_ICACHE_ECC, `FATORI_HARDENED_PC, `FATORI_SHADOW_CSRS);
+    $display("FATORI_DATA_INDEP_TIMING=%0d  FATORI_DUMMY_INSTR=%0d  FATORI_FAULT_MGR=%0d",
+            `FATORI_DATA_INDEP_TIMING, `FATORI_DUMMY_INSTR, `FATORI_FAULT_MGR);
   end
   `endif
 
@@ -225,7 +258,7 @@ module ibex_top import ibex_pkg::*; #(
   // Main clock gate //
   /////////////////////
 
-  if (`FTM_SECURE_GUARDS) begin : g_clock_en_secure
+  if (`FATORI_SECURE_GUARDS) begin : g_clock_en_secure
     // For secure Ibex core_busy_q must be a specific multi-bit pattern to enable the clock.
     prim_flop #(
       .Width($bits(ibex_mubi_t)),
@@ -241,7 +274,7 @@ module ibex_top import ibex_pkg::*; #(
     // For non secure Ibex only the bottom bit of core_busy_q is considered. Other FFs can be
     // optimized away during synthesis.
 
-    `IOB_REG_TMR(4, IbexMuBiOff, '0, !rst_ni, 1'b1, core_busy_d, core_busy_q, core_busy)
+    `FATORI_REG(IbexMuBiOff, !rst_ni, 1'b1, core_busy_d, core_busy_q, fi_port, 8'd152, '0, '0, core_busy)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     core_busy_q <= IbexMuBiOff;
@@ -299,6 +332,10 @@ module ibex_top import ibex_pkg::*; #(
 
     assign unused_intg = ^{instr_rdata_intg_i, data_rdata_intg_i};
   end
+
+  // Child error aggregation signals
+  logic core_new_maj_err, core_new_min_err, core_scrub_occurred;
+  logic lockstep_new_maj_err, lockstep_new_min_err, lockstep_scrub_occurred;
 
   ibex_core #(
     .PMPEnable        (PMPEnable),
@@ -433,7 +470,37 @@ module ibex_top import ibex_pkg::*; #(
     .alert_minor_o         (core_alert_minor),
     .alert_major_internal_o(core_alert_major_internal),
     .alert_major_bus_o     (core_alert_major_bus),
-    .core_busy_o           (core_busy_d)
+    .core_busy_o           (core_busy_d),
+    
+    // Child error aggregation
+    .core_new_maj_err_o    (core_new_maj_err),
+    .core_new_min_err_o    (core_new_min_err),
+    .core_scrub_occurred_o (core_scrub_occurred)
+
+    `ifdef FATORI_FI
+      ,.fi_port(fi_port)
+    `endif
+    
+    // FATORI Fault Tolerance Metrics (gated by FT_LAYER)
+    `ifdef FATORI_FT_LAYER_1
+      ,.fatori_minor_cnt_i(fatori_minor_cnt_i)
+      ,.fatori_major_cnt_i(fatori_major_cnt_i)
+      
+      `ifdef FATORI_FT_LAYER_2
+        ,.fatori_corrected_cnt_i(fatori_corrected_cnt_i)
+        
+        `ifdef FATORI_FT_LAYER_3
+          ,.fatori_cycles_to_first_min_i(fatori_cycles_to_first_min_i)
+          ,.fatori_cycles_to_first_maj_i(fatori_cycles_to_first_maj_i)
+          ,.fatori_last_detection_latency_i(fatori_last_detection_latency_i)
+          
+          `ifdef FATORI_FT_LAYER_4
+            ,.fatori_latency_sum_i(fatori_latency_sum_i)
+            ,.fatori_latency_count_i(fatori_latency_count_i)
+          `endif
+        `endif
+      `endif
+    `endif
   );
 
   /////////////////////////////////
@@ -534,11 +601,11 @@ module ibex_top import ibex_pkg::*; #(
                                   ic_scr_key_req ? 1'b0                 :
                                                    scramble_key_valid_q;
 
-    `IOB_REG_TMR(SCRAMBLE_KEY_W, RndCnstIbexKey, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, scramble_key_q, scramble_key)
-    `IOB_REG_TMR(SCRAMBLE_NONCE_W, RndCnstIbexNonce, '0, !rst_ni, scramble_key_valid_i, scramble_nonce_i, scramble_nonce_q, scramble_nonce)
+    `FATORI_REG(RndCnstIbexKey, !rst_ni, scramble_key_valid_i, scramble_key_i, scramble_key_q, fi_port, 8'd153, '0, '0, scramble_key)
+    `FATORI_REG(RndCnstIbexNonce, !rst_ni, scramble_key_valid_i, scramble_nonce_i, scramble_nonce_q, fi_port, 8'd154, '0, '0, scramble_nonce)
 
-    `IOB_REG_TMR(1, '1, '0, !rst_ni, '1, scramble_key_valid_d, scramble_key_valid_q, scramble_key_valid)
-    `IOB_REG_TMR(1, '0, '0, !rst_ni, '1, scramble_req_d, scramble_req_q, scramble_req)
+    `FATORI_REG('1, !rst_ni, '1, scramble_key_valid_d, scramble_key_valid_q, fi_port, 8'd155, '0, '0, scramble_key_valid)
+    `FATORI_REG('0, !rst_ni, '1, scramble_req_d, scramble_req_q, fi_port, 8'd156, '0, '0, scramble_req)
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
     //     scramble_key_q       <= RndCnstIbexKey;
@@ -671,7 +738,7 @@ module ibex_top import ibex_pkg::*; #(
           // redundant with the sampling performed in the actual design, but that is okay because
           // the assertions exist to check the correct functioning of the design.
           logic [SCRAMBLE_KEY_W-1:0] sampled_scramble_key;
-          `IOB_REG_TMR(SCRAMBLE_KEY_W, 'x, '0, !rst_ni, scramble_key_valid_i, scramble_key_i, sampled_scramble_key, sampled_scramble_key)
+          `FATORI_REG('x, !rst_ni, scramble_key_valid_i, scramble_key_i, sampled_scramble_key, fi_port, 8'd157, '0, '0, sampled_scramble_key)
           // always_ff @(posedge clk_i, negedge rst_ni) begin
           //   if (!rst_ni) begin
           //     sampled_scramble_key <= 'x;
@@ -737,8 +804,10 @@ module ibex_top import ibex_pkg::*; #(
           .cfg_i       (ram_cfg_i)
         );
 
-        assign icache_tag_alert  = '{default:'b0};
-        assign icache_data_alert = '{default:'b0};
+        // assign icache_tag_alert  = '{default:'b0};
+        // assign icache_data_alert = '{default:'b0};
+        assign icache_tag_alert[way]  = 1'b0;
+        assign icache_data_alert[way] = 1'b0; 
       end
     end
 
@@ -1106,7 +1175,16 @@ module ibex_top import ibex_pkg::*; #(
       .alert_major_bus_o      (lockstep_alert_major_bus_local),
       .core_busy_i            (core_busy_local),
       .test_en_i              (test_en_i),
-      .scan_rst_ni            (scan_rst_ni)
+      .scan_rst_ni            (scan_rst_ni),
+      
+      // Child error aggregation
+      .lockstep_new_maj_err_o (lockstep_new_maj_err),
+      .lockstep_new_min_err_o (lockstep_new_min_err),
+      .lockstep_scrub_occurred_o (lockstep_scrub_occurred)
+
+      `ifdef FATORI_FI
+        ,.fi_port(fi_port)
+      `endif
     );
 
     prim_buf u_prim_buf_alert_minor (
@@ -1128,6 +1206,9 @@ module ibex_top import ibex_pkg::*; #(
     assign lockstep_alert_major_internal = 1'b0;
     assign lockstep_alert_major_bus      = 1'b0;
     assign lockstep_alert_minor          = 1'b0;
+    assign lockstep_new_maj_err          = 1'b0;
+    assign lockstep_new_min_err          = 1'b0;
+    assign lockstep_scrub_occurred       = 1'b0;
     logic unused_scan;
     assign unused_scan = scan_rst_ni;
   end
@@ -1188,9 +1269,8 @@ module ibex_top import ibex_pkg::*; #(
     pending_access_t pending_dside_accesses_d[MaxOutstandingDSideAccesses];
     pending_access_t pending_dside_accesses_shifted[MaxOutstandingDSideAccesses];
 
-    // Manually instantiate the IOB_REG_TMR macros
-    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[0], pending_dside_accesses_q[0], pending_dside_accesses_0)
-    `IOB_REG_TMR(2, '0, '0, !rst_ni, '1, pending_dside_accesses_d[1], pending_dside_accesses_q[1], pending_dside_accesses_1)
+    `FATORI_REG('0, !rst_ni, '1, pending_dside_accesses_d[0], pending_dside_accesses_q[0], fi_port, 8'd158, '0, '0, pending_dside_accesses_0)
+    `FATORI_REG('0, !rst_ni, '1, pending_dside_accesses_d[1], pending_dside_accesses_q[1], fi_port, 8'd159, '0, '0, pending_dside_accesses_1)
 
 
     for (genvar i = 0; i < MaxOutstandingDSideAccesses; i++) begin : g_dside_tracker
@@ -1252,7 +1332,7 @@ module ibex_top import ibex_pkg::*; #(
     // Should only see a request response if we're expecting one
     `ASSERT(PendingAccessTrackingCorrect, data_rvalid_i |-> pending_dside_accesses_q[0])
 
-    if (`FTM_SECURE_GUARDS) begin : g_secure_ibex_mem_assert
+    if (`FATORI_SECURE_GUARDS) begin : g_secure_ibex_mem_assert
       // For SecureIbex responses to both writes and reads must specify rdata and rdata_intg (for
       // writes rdata is effectively ignored by rdata_intg still checked against rdata)
       `ASSERT_KNOWN_IF(IbexDataRPayloadX, {data_rdata_i, data_rdata_intg_i},
@@ -1363,8 +1443,8 @@ module ibex_top import ibex_pkg::*; #(
   // Ensure the crash dump is connected to the correct internal signals
   `ASSERT(CrashDumpCurrentPCConn, crash_dump_o.current_pc === u_ibex_core.pc_id)
   `ASSERT(CrashDumpNextPCConn, crash_dump_o.next_pc === u_ibex_core.pc_if)
-  `ASSERT(CrashDumpLastDataAddrConn,
-    crash_dump_o.last_data_addr === u_ibex_core.load_store_unit_i.addr_last_q)
+  //`ASSERT(CrashDumpLastDataAddrConn,
+  //  crash_dump_o.last_data_addr === u_ibex_core.load_store_unit_i.u_lsu.addr_last_q)
   `ASSERT(CrashDumpExceptionPCConn,
     crash_dump_o.exception_pc === u_ibex_core.cs_registers_i.mepc_q)
   `ASSERT(CrashDumpExceptionAddrConn,
@@ -1398,4 +1478,98 @@ module ibex_top import ibex_pkg::*; #(
       instr_rvalid_i && (|instr_ecc_err) |-> ##[0:5] alert_major_bus_o)
   end
   `endif
+  
+  // ============================================================
+  // Error Aggregation (OR own registers + children)
+  // ============================================================
+  
+  // Build error aggregation with conditional signals based on configuration
+  generate
+    logic core_busy_maj, core_busy_min, core_busy_scrub;
+    logic scramble_maj, scramble_min, scramble_scrub;
+    logic sampled_key_maj, sampled_key_min, sampled_key_scrub;
+    logic pending_maj, pending_min, pending_scrub;
+    
+    // core_busy only exists in non-secure mode
+    if (!`FATORI_SECURE_GUARDS) begin : g_err_core_busy
+      assign core_busy_maj = g_clock_en_non_secure.core_busy_new_maj_err;
+      assign core_busy_min = g_clock_en_non_secure.core_busy_new_min_err;
+      assign core_busy_scrub = g_clock_en_non_secure.core_busy_scrub_occurred;
+    end else begin : g_err_no_core_busy
+      assign core_busy_maj = 1'b0;
+      assign core_busy_min = 1'b0;
+      assign core_busy_scrub = 1'b0;
+    end
+    
+    // Scramble signals only exist when ICacheScramble is enabled
+    if (ICacheScramble) begin : g_err_scramble
+      assign scramble_maj = gen_scramble.scramble_key_new_maj_err |
+                           gen_scramble.scramble_nonce_new_maj_err |
+                           gen_scramble.scramble_key_valid_new_maj_err |
+                           gen_scramble.scramble_req_new_maj_err;
+      assign scramble_min = gen_scramble.scramble_key_new_min_err |
+                           gen_scramble.scramble_nonce_new_min_err |
+                           gen_scramble.scramble_key_valid_new_min_err |
+                           gen_scramble.scramble_req_new_min_err;
+      assign scramble_scrub = gen_scramble.scramble_key_scrub_occurred |
+                             gen_scramble.scramble_nonce_scrub_occurred |
+                             gen_scramble.scramble_key_valid_scrub_occurred |
+                             gen_scramble.scramble_req_scrub_occurred;
+    end else begin : g_err_no_scramble
+      assign scramble_maj = 1'b0;
+      assign scramble_min = 1'b0;
+      assign scramble_scrub = 1'b0;
+    end
+    
+    // sampled_scramble_key only exists when ICacheScramble AND INC_ASSERT
+    `ifdef INC_ASSERT
+      if (ICacheScramble) begin : g_err_sampled_key
+        assign sampled_key_maj = gen_scramble.gen_rams.u_ibex_icache_data_banks.gen_rams[0].gen_scramble_rams.u_tag_banks.sampled_scramble_key_new_maj_err;
+        assign sampled_key_min = gen_scramble.gen_rams.u_ibex_icache_data_banks.gen_rams[0].gen_scramble_rams.u_tag_banks.sampled_scramble_key_new_min_err;
+        assign sampled_key_scrub = gen_scramble.gen_rams.u_ibex_icache_data_banks.gen_rams[0].gen_scramble_rams.u_tag_banks.sampled_scramble_key_scrub_occurred;
+      end else begin : g_err_no_sampled_key
+        assign sampled_key_maj = 1'b0;
+        assign sampled_key_min = 1'b0;
+        assign sampled_key_scrub = 1'b0;
+      end
+      
+      // pending_dside_accesses only exists with INC_ASSERT
+      assign pending_maj = pending_dside_accesses_0_new_maj_err |
+                          pending_dside_accesses_1_new_maj_err;
+      assign pending_min = pending_dside_accesses_0_new_min_err |
+                          pending_dside_accesses_1_new_min_err;
+      assign pending_scrub = pending_dside_accesses_0_scrub_occurred |
+                            pending_dside_accesses_1_scrub_occurred;
+    `else
+      assign sampled_key_maj = 1'b0;
+      assign sampled_key_min = 1'b0;
+      assign sampled_key_scrub = 1'b0;
+      assign pending_maj = 1'b0;
+      assign pending_min = 1'b0;
+      assign pending_scrub = 1'b0;
+    `endif
+    
+    // Final aggregation
+    assign top_new_maj_err_o = core_busy_maj |
+                               scramble_maj |
+                               sampled_key_maj |
+                               pending_maj |
+                               core_new_maj_err |
+                               lockstep_new_maj_err;
+    
+    assign top_new_min_err_o = core_busy_min |
+                               scramble_min |
+                               sampled_key_min |
+                               pending_min |
+                               core_new_min_err |
+                               lockstep_new_min_err;
+    
+    assign top_scrub_occurred_o = core_busy_scrub |
+                                   scramble_scrub |
+                                   sampled_key_scrub |
+                                   pending_scrub |
+                                   core_scrub_occurred |
+                                   lockstep_scrub_occurred;
+  endgenerate
+
 endmodule

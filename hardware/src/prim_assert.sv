@@ -6,87 +6,22 @@
 //  - Provides default clk and rst options to simplify code
 //  - Provides boiler plate template for common assertions
 
-//FATORI-V Content
-//  - A TMR Register Macro was added here because this file was included in most files
 
 `ifndef PRIM_ASSERT_SV
 `define PRIM_ASSERT_SV
 
 /////////////////////
-// FATORI-V macros //
+//     FATORI-V    //
 /////////////////////
 
-// FTM Enabling Macros
-`ifndef FATORI_FEATURES_SVH
-  `include "fatori_features.svh"
-`endif
-
-
-`define IOB_REG_TMR(DATA_W_i, RST_VAL_i, TMR_EN_i, RST, EN, DIN, DOUT, PREFIX) \
-  `ifndef FATORI_TMR_CONFIG_INCLUDED                                                   \
-    `define FATORITMR_CONFIG_INCLUDED                                                 \
-    `include "fatori_tmr_config.svh"                                                   \
-  `endif                                                                        \
-  logic PREFIX``_maj_err;                                                       \
-  logic PREFIX``_min_err;                                                       \
-  logic [2:0] PREFIX``_err_loc;                                                 \
-  localparam int PREFIX``_DW = $bits(DOUT);                                     \
-  logic [PREFIX``_DW-1:0] PREFIX``_din_raw;                                     \
-  logic [PREFIX``_DW-1:0] PREFIX``_dout_raw;                                    \
-  assign PREFIX``_din_raw  = DIN;                                               \
-  iob_reg_re_tmr #(.DATA_W(PREFIX``_DW), .RST_VAL(RST_VAL_i),                   \
-                   .TMR_EN(`PREFIX``_TMR_EN))                                   \
-  PREFIX``_reg_inst (                                                           \
-    .clk_i     (clk_i),                                                         \
-    .cke_i     (1'b1),                                                          \
-    .arst_i    (RST),                                                           \
-    .en_i      (EN),                                                            \
-    .rst_i     (RST),                                                           \
-    .data_i    (PREFIX``_din_raw),                                              \
-    .data_o    (PREFIX``_dout_raw),                                             \
-    .maj_err_o (PREFIX``_maj_err),                                              \
-    .min_err_o (PREFIX``_min_err),                                              \
-    .err_loc_o (PREFIX``_err_loc)                                               \
-  );                                                                            \
-  assign DOUT = PREFIX``_dout_raw;
-
-
-// Enum-safe wrapper for TMR registers.
-// ENUM_T : the enum type (e.g., dbg_cause_e)
-// RST_ENUM: the enum reset literal (e.g., DBG_CAUSE_NONE)
-`define IOB_REG_TMR_ENUM(ENUM_T, RST_ENUM, RST, EN, DIN_ENUM, DOUT_ENUM, PREFIX) \
-  `ifndef FATORI_TMR_CONFIG_INCLUDED                                                     \
-    `define FATORI_TMR_CONFIG_INCLUDED                                                   \
-    `include "fatori_tmr_config.svh"                                                     \
-  `endif                                                                          \
-  logic PREFIX``_maj_err;                                                         \
-  logic PREFIX``_min_err;                                                         \
-  logic [2:0] PREFIX``_err_loc;                                                   \
-  localparam int PREFIX``_DW = $bits(ENUM_T);                                     \
-  typedef logic [PREFIX``_DW-1:0] PREFIX``_raw_t;                                 \
-  PREFIX``_raw_t PREFIX``_din_raw;                                                \
-  PREFIX``_raw_t PREFIX``_dout_raw;                                               \
-  localparam PREFIX``_raw_t PREFIX``_RST_RAW = PREFIX``_raw_t'(RST_ENUM);         \
-  assign PREFIX``_din_raw = PREFIX``_raw_t'(DIN_ENUM);                             \
-  iob_reg_re_tmr #(.DATA_W(PREFIX``_DW), .RST_VAL(PREFIX``_RST_RAW),              \
-                   .TMR_EN(`PREFIX``_TMR_EN))                                     \
-  PREFIX``_reg_inst (                                                             \
-    .clk_i     (clk_i),                                                           \
-    .cke_i     (1'b1),                                                            \
-    .arst_i    (RST),                                                             \
-    .en_i      (EN),                                                              \
-    .rst_i     (RST),                                                             \
-    .data_i    (PREFIX``_din_raw),                                                \
-    .data_o    (PREFIX``_dout_raw),                                               \
-    .maj_err_o (PREFIX``_maj_err),                                                \
-    .min_err_o (PREFIX``_min_err),                                                \
-    .err_loc_o (PREFIX``_err_loc)                                                 \
-  );                                                                              \
-  assign DOUT_ENUM = ENUM_T'(PREFIX``_dout_raw);
-
-
-
-
+// These files are generated by fatori-v.py
+`include "fatori_macro_functions.svh"
+`include "fatori_features.svh"
+`include "fatori_ftm.svh"
+`include "fatori_selftest.svh"
+`include "fatori_reg_mon.svh"
+`include "fatori_logic_mon.svh"
+`include "fatori_pblocks.svh"
 
 
 ///////////////////

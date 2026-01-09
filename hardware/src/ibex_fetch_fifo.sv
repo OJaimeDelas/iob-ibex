@@ -30,12 +30,23 @@ module ibex_fetch_fifo #(
   input  logic                in_err_i,
 
   // output port
-  output logic                out_valid_o,
   input  logic                out_ready_i,
+  output logic                out_valid_o,
   output logic [31:0]         out_addr_o,
   output logic [31:0]         out_rdata_o,
   output logic                out_err_o,
-  output logic                out_err_plus2_o
+  output logic                out_err_plus2_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                fetch_fifo_new_maj_err_o,
+  output logic                fetch_fifo_new_min_err_o,
+  output logic                fetch_fifo_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   localparam int unsigned DEPTH = NUM_REQS+1;
@@ -150,9 +161,9 @@ module ibex_fetch_fifo #(
                                   instr_addr_next;
 
   if (ResetAll) begin : g_instr_addr_ra
-    `IOB_REG_TMR(32, '0, '0, !rst_ni, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr)
+    `FATORI_REG('0, !rst_ni, instr_addr_en, instr_addr_d, instr_addr_q, fi_port, 8'd84, '0, '0, instr_addr)
   end else begin : g_instr_addr_nr
-    `IOB_REG_TMR(32, '0, '0, '0, instr_addr_en, instr_addr_d, instr_addr_q, instr_addr_no_rst)
+    `FATORI_REG('0, '0, instr_addr_en, instr_addr_d, instr_addr_q, fi_port, 8'd85, '0, '0, instr_addr_no_rst)
   end
   // if (ResetAll) begin : g_instr_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -229,7 +240,7 @@ module ibex_fetch_fifo #(
   ////////////////////
   // FIFO registers //
   ////////////////////
-  `IOB_REG_TMR(DEPTH, '0, '0, !rst_ni, '1, valid_d, valid_q, valid)
+  `FATORI_REG('0, !rst_ni, '1, valid_d, valid_q, fi_port, 8'd86, '0, '0, valid)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin
@@ -241,16 +252,14 @@ module ibex_fetch_fifo #(
 
 
 
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], rdata_d[0], rdata_q[0], rdata_0)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[0], err_d[0], err_q[0], err_0)
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], rdata_d[1], rdata_q[1], rdata_1)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[1], err_d[1], err_q[1], err_1)
-  `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], rdata_d[2], rdata_q[2], rdata_2)
-  `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[2], err_d[2], err_q[2], err_2)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[0], rdata_d[0], rdata_q[0], fi_port, 8'd87, '0, '0, rdata_0)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[0], err_d[0], err_q[0], fi_port, 8'd88, '0, '0, err_0)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[1], rdata_d[1], rdata_q[1], fi_port, 8'd89, '0, '0, rdata_1)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[1], err_d[1], err_q[1], fi_port, 8'd90, '0, '0, err_1)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[2], rdata_d[2], rdata_q[2], fi_port, 8'd91, '0, '0, rdata_2)
+  `FATORI_REG('0, ResetAll ? !rst_ni : '0, entry_en[2], err_d[2], err_q[2], fi_port, 8'd92, '0, '0, err_2)
 
   // for (genvar i = 0; i < DEPTH; i++) begin : g_fifo_regs
-  // `IOB_REG_TMR(32, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], rdata_d[i], rdata_q[i], rdata_``i)
-  // `IOB_REG_TMR(1, '0, '0, ResetAll ? !rst_ni : '0, entry_en[i], err_d[i], err_q[i], err_``i)
   //   // if (ResetAll) begin : g_rdata_ra
   //   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //   //     if (!rst_ni) begin
@@ -282,5 +291,66 @@ module ibex_fetch_fifo #(
   // Must not push to FIFO when full.
   `ASSERT(IbexFetchFifoPushFull,
       (in_valid_i) |-> (!valid_q[DEPTH-1] || clear_i))
+
+  // ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  generate
+    if (ResetAll) begin : g_err_agg_reset_all
+      assign fetch_fifo_new_maj_err_o = g_instr_addr_ra.instr_addr_new_maj_err | 
+                                         valid_new_maj_err |
+                                         rdata_0_new_maj_err |
+                                         err_0_new_maj_err |
+                                         rdata_1_new_maj_err |
+                                         err_1_new_maj_err |
+                                         rdata_2_new_maj_err |
+                                         err_2_new_maj_err;
+      
+      assign fetch_fifo_new_min_err_o = g_instr_addr_ra.instr_addr_new_min_err | 
+                                         valid_new_min_err |
+                                         rdata_0_new_min_err |
+                                         err_0_new_min_err |
+                                         rdata_1_new_min_err |
+                                         err_1_new_min_err |
+                                         rdata_2_new_min_err |
+                                         err_2_new_min_err;
+      
+      assign fetch_fifo_scrub_occurred_o = g_instr_addr_ra.instr_addr_scrub_occurred | 
+                                            valid_scrub_occurred |
+                                            rdata_0_scrub_occurred |
+                                            err_0_scrub_occurred |
+                                            rdata_1_scrub_occurred |
+                                            err_1_scrub_occurred |
+                                            rdata_2_scrub_occurred |
+                                            err_2_scrub_occurred;
+    end else begin : g_err_agg_no_reset
+      assign fetch_fifo_new_maj_err_o = g_instr_addr_nr.instr_addr_no_rst_new_maj_err | 
+                                         valid_new_maj_err |
+                                         rdata_0_new_maj_err |
+                                         err_0_new_maj_err |
+                                         rdata_1_new_maj_err |
+                                         err_1_new_maj_err |
+                                         rdata_2_new_maj_err |
+                                         err_2_new_maj_err;
+      
+      assign fetch_fifo_new_min_err_o = g_instr_addr_nr.instr_addr_no_rst_new_min_err | 
+                                         valid_new_min_err |
+                                         rdata_0_new_min_err |
+                                         err_0_new_min_err |
+                                         rdata_1_new_min_err |
+                                         err_1_new_min_err |
+                                         rdata_2_new_min_err |
+                                         err_2_new_min_err;
+      
+      assign fetch_fifo_scrub_occurred_o = g_instr_addr_nr.instr_addr_no_rst_scrub_occurred | 
+                                            valid_scrub_occurred |
+                                            rdata_0_scrub_occurred |
+                                            err_0_scrub_occurred |
+                                            rdata_1_scrub_occurred |
+                                            err_1_scrub_occurred |
+                                            rdata_2_scrub_occurred |
+                                            err_2_scrub_occurred;
+    end
+  endgenerate
 
 endmodule

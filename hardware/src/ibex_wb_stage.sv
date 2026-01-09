@@ -58,7 +58,18 @@ module ibex_wb_stage #(
   input logic                      lsu_resp_valid_i,
   input logic                      lsu_resp_err_i,
 
-  output logic                     instr_done_wb_o
+  output logic                     instr_done_wb_o,
+  
+  // Error aggregation outputs (for fault_mgr metrics)
+  output logic                     wb_stage_new_maj_err_o,
+  output logic                     wb_stage_new_min_err_o,
+  output logic                     wb_stage_scrub_occurred_o
+  
+  `ifdef FATORI_FI
+    // If Fault-Injection is activated create the FI Port
+    ,input  logic [7:0]      fi_port 
+  `endif
+   
 );
 
   import ibex_pkg::*;
@@ -92,7 +103,7 @@ module ibex_wb_stage #(
     // Signal only relevant if wb_valid_q set
     assign wb_done = (wb_instr_type_q == WB_INSTR_OTHER) | lsu_resp_valid_i;
 
-    `IOB_REG_TMR($bits(wb_valid_q), '0, '0, (ResetAll ? !rst_ni : '0), '1, wb_valid_d, wb_valid_q, wb_valid)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, wb_valid_d, wb_valid_q, fi_port, 8'd160, '0, '0, wb_valid)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin
@@ -102,13 +113,14 @@ module ibex_wb_stage #(
     //   end
     // end
 
-    `IOB_REG_TMR($bits(rf_we_wb_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_we_id_i,              rf_we_wb_q,      rf_we_wb)
-    `IOB_REG_TMR($bits(rf_waddr_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_waddr_id_i,           rf_waddr_wb_q,   rf_waddr_wb)
-    `IOB_REG_TMR($bits(rf_wdata_wb_q),   '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_wdata_id_i,           rf_wdata_wb_q,   rf_wdata_wb)
-    `IOB_REG_TMR_ENUM(wb_instr_type_e,   0,      (ResetAll ? !rst_ni : '0), en_wb_i, instr_type_wb_i,         wb_instr_type_q, wb_instr_type)
-    `IOB_REG_TMR($bits(wb_pc_q),         '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, pc_id_i,                 wb_pc_q,         wb_pc)
-    `IOB_REG_TMR($bits(wb_compressed_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_is_compressed_id_i, wb_compressed_q, wb_compressed)
-    `IOB_REG_TMR($bits(wb_count_q),      '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_perf_count_id_i,    wb_count_q,      wb_count)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_we_id_i, rf_we_wb_q, fi_port, 8'd161, '0, '0, rf_we_wb)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_waddr_id_i, rf_waddr_wb_q, fi_port, 8'd162, '0, '0, rf_waddr_wb)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, rf_wdata_id_i, rf_wdata_wb_q, fi_port, 8'd163, '0, '0, rf_wdata_wb)
+    //`FATORI_REG(0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_type_wb_i, wb_instr_type_q, fi_port, 8'd164, '0, '0, wb_instr_type)
+    `FATORI_REG_ENUM(wb_instr_type_e, 0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_type_wb_i, wb_instr_type_q, fi_port, 8'd164, '0, '0, wb_instr_type)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, pc_id_i, wb_pc_q, fi_port, 8'd165, '0, '0, wb_pc)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_is_compressed_id_i, wb_compressed_q, fi_port, 8'd166, '0, '0, wb_compressed)
+    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, instr_perf_count_id_i, wb_count_q, fi_port, 8'd167, '0, '0, wb_count)
 
     // if (ResetAll) begin : g_wb_regs_ra
     //   always_ff @(posedge clk_i or negedge rst_ni) begin
@@ -181,7 +193,7 @@ module ibex_wb_stage #(
     if (DummyInstructions) begin : g_dummy_instr_wb
       logic dummy_instr_wb_q;
 
-      `IOB_REG_TMR($bits(dummy_instr_wb_q), '0, '0, (ResetAll ? !rst_ni : '0), en_wb_i, dummy_instr_id_i, dummy_instr_wb_q, dummy_instr_wb)
+      `FATORI_REG('0, (ResetAll ? !rst_ni : '0), en_wb_i, dummy_instr_id_i, dummy_instr_wb_q, fi_port, 8'd168, '0, '0, dummy_instr_wb)
       // if (ResetAll) begin : g_dummy_instr_wb_regs_ra
       //   always_ff @(posedge clk_i or negedge rst_ni) begin
       //     if (!rst_ni) begin
@@ -260,4 +272,75 @@ module ibex_wb_stage #(
   `DV_FCOV_SIGNAL_GEN_IF(logic, wb_valid, g_writeback_stage.wb_valid_q, WritebackStage)
 
   `ASSERT(RFWriteFromOneSourceOnly, $onehot0(rf_wdata_wb_mux_we))
+// ============================================================
+  // Error Aggregation (OR all register error pulses in this module)
+  // ============================================================
+  generate
+    if (WritebackStage) begin : g_err_with_wb_stage
+      if (DummyInstructions) begin : g_err_with_dummy
+        assign wb_stage_new_maj_err_o = g_writeback_stage.wb_valid_new_maj_err |
+                                         g_writeback_stage.rf_we_wb_new_maj_err |
+                                         g_writeback_stage.rf_waddr_wb_new_maj_err |
+                                         g_writeback_stage.rf_wdata_wb_new_maj_err |
+                                         g_writeback_stage.wb_instr_type_new_maj_err |
+                                         g_writeback_stage.wb_pc_new_maj_err |
+                                         g_writeback_stage.wb_compressed_new_maj_err |
+                                         g_writeback_stage.wb_count_new_maj_err |
+                                         g_writeback_stage.g_dummy_instr_wb.dummy_instr_wb_new_maj_err;
+        
+        assign wb_stage_new_min_err_o = g_writeback_stage.wb_valid_new_min_err |
+                                         g_writeback_stage.rf_we_wb_new_min_err |
+                                         g_writeback_stage.rf_waddr_wb_new_min_err |
+                                         g_writeback_stage.rf_wdata_wb_new_min_err |
+                                         g_writeback_stage.wb_instr_type_new_min_err |
+                                         g_writeback_stage.wb_pc_new_min_err |
+                                         g_writeback_stage.wb_compressed_new_min_err |
+                                         g_writeback_stage.wb_count_new_min_err |
+                                         g_writeback_stage.g_dummy_instr_wb.dummy_instr_wb_new_min_err;
+        
+        assign wb_stage_scrub_occurred_o = g_writeback_stage.wb_valid_scrub_occurred |
+                                            g_writeback_stage.rf_we_wb_scrub_occurred |
+                                            g_writeback_stage.rf_waddr_wb_scrub_occurred |
+                                            g_writeback_stage.rf_wdata_wb_scrub_occurred |
+                                            g_writeback_stage.wb_instr_type_scrub_occurred |
+                                            g_writeback_stage.wb_pc_scrub_occurred |
+                                            g_writeback_stage.wb_compressed_scrub_occurred |
+                                            g_writeback_stage.wb_count_scrub_occurred |
+                                            g_writeback_stage.g_dummy_instr_wb.dummy_instr_wb_scrub_occurred;
+      end else begin : g_err_no_dummy
+        assign wb_stage_new_maj_err_o = g_writeback_stage.wb_valid_new_maj_err |
+                                         g_writeback_stage.rf_we_wb_new_maj_err |
+                                         g_writeback_stage.rf_waddr_wb_new_maj_err |
+                                         g_writeback_stage.rf_wdata_wb_new_maj_err |
+                                         g_writeback_stage.wb_instr_type_new_maj_err |
+                                         g_writeback_stage.wb_pc_new_maj_err |
+                                         g_writeback_stage.wb_compressed_new_maj_err |
+                                         g_writeback_stage.wb_count_new_maj_err;
+        
+        assign wb_stage_new_min_err_o = g_writeback_stage.wb_valid_new_min_err |
+                                         g_writeback_stage.rf_we_wb_new_min_err |
+                                         g_writeback_stage.rf_waddr_wb_new_min_err |
+                                         g_writeback_stage.rf_wdata_wb_new_min_err |
+                                         g_writeback_stage.wb_instr_type_new_min_err |
+                                         g_writeback_stage.wb_pc_new_min_err |
+                                         g_writeback_stage.wb_compressed_new_min_err |
+                                         g_writeback_stage.wb_count_new_min_err;
+        
+        assign wb_stage_scrub_occurred_o = g_writeback_stage.wb_valid_scrub_occurred |
+                                            g_writeback_stage.rf_we_wb_scrub_occurred |
+                                            g_writeback_stage.rf_waddr_wb_scrub_occurred |
+                                            g_writeback_stage.rf_wdata_wb_scrub_occurred |
+                                            g_writeback_stage.wb_instr_type_scrub_occurred |
+                                            g_writeback_stage.wb_pc_scrub_occurred |
+                                            g_writeback_stage.wb_compressed_scrub_occurred |
+                                            g_writeback_stage.wb_count_scrub_occurred;
+      end
+    end else begin : g_err_no_wb_stage
+      // No registers in bypass mode, all errors are 0
+      assign wb_stage_new_maj_err_o = 1'b0;
+      assign wb_stage_new_min_err_o = 1'b0;
+      assign wb_stage_scrub_occurred_o = 1'b0;
+    end
+  endgenerate
+
 endmodule
