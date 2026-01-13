@@ -170,6 +170,7 @@ module fatori_mon_wrap_decoder #(
     logic                 branch_in_dec_o;
     logic                 decoder_new_maj_err_o;
     logic                 decoder_new_min_err_o;
+    logic                 decoder_scrub_occurred_o;
   } decoder_out_t;
 
   localparam int DW = $bits(decoder_out_t);
@@ -180,7 +181,7 @@ module fatori_mon_wrap_decoder #(
   // Instantiate N replicas
   for (genvar g = 0; g < N; g++) begin : gen_dec_reps
     
-    `KEEP_DECODER
+    //`KEEP_DECODER
     ibex_decoder #(
       .RV32E          (RV32E),
       .RV32M          (RV32M),
@@ -258,7 +259,8 @@ module fatori_mon_wrap_decoder #(
       
       // Child error aggregation outputs
       .decoder_new_maj_err_o(d_rep[g].decoder_new_maj_err_o),
-      .decoder_new_min_err_o(d_rep[g].decoder_new_min_err_o)
+      .decoder_new_min_err_o(d_rep[g].decoder_new_min_err_o),
+      .decoder_scrub_occurred_o(d_rep[g].decoder_scrub_occurred_o)
 
 `ifdef FATORI_FI
       ,.fi_port(fi_port)

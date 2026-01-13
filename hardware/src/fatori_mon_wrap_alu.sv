@@ -76,7 +76,7 @@ module fatori_mon_wrap_alu #(
       // Temporary per-instance nets with the same shape as the port
       logic [31:0] imd_val_d_g [2];
 
-      `KEEP_ALU
+      //`KEEP_ALU
       ibex_alu #(
         .RV32B (RV32B)
       ) u_alu (

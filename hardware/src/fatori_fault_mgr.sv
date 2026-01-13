@@ -290,7 +290,7 @@ module fatori_fault_mgr
             `ifdef FATORI_FI
               // Only accumulate if we have valid latency measurements (requires FATORI_FI)
               assign latency_sum_d = error_detected_l4 ? 
-                                     (latency_sum_q + {16'd0, gen_layer3.last_detection_latency_q}) : 
+                                     (latency_sum_q + {16'd0, last_detection_latency_q}) : 
                                      latency_sum_q;
             `else
               // Without injection tracking, can't compute meaningful latency averages

@@ -445,7 +445,7 @@ module ibex_core import ibex_pkg::*; #(
   //////////////
   
   // Child error aggregation signals
-  logic if_stage_new_maj_err, if_stage_new_min_err;
+  logic if_stage_new_maj_err, if_stage_new_min_err, if_stage_scrub_occurred;
 
   generate
     if (`IFSTAGE_MON_N > 1) begin : g_if_mon
@@ -554,7 +554,8 @@ module ibex_core import ibex_pkg::*; #(
         
         // Child error aggregation
         .if_stage_new_maj_err_o(if_stage_new_maj_err),
-        .if_stage_new_min_err_o(if_stage_new_min_err)
+        .if_stage_new_min_err_o(if_stage_new_min_err),
+        .if_stage_scrub_occurred_o(if_stage_scrub_occurred)
 
       `ifdef FATORI_FI
         ,.fi_port(fi_port)
@@ -658,7 +659,8 @@ module ibex_core import ibex_pkg::*; #(
         
         // Child error aggregation
         .if_stage_new_maj_err_o(if_stage_new_maj_err),
-        .if_stage_new_min_err_o(if_stage_new_min_err)
+        .if_stage_new_min_err_o(if_stage_new_min_err),
+        .if_stage_scrub_occurred_o(if_stage_scrub_occurred)
 
         `ifdef FATORI_FI
           ,.fi_port(fi_port)
@@ -704,7 +706,7 @@ module ibex_core import ibex_pkg::*; #(
   //////////////
 
   // Child error aggregation signals
-  logic id_stage_new_maj_err, id_stage_new_min_err;
+  logic id_stage_new_maj_err, id_stage_new_min_err, id_stage_scrub_occurred;
   
   `KEEP_ID_STAGE
   ibex_id_stage #(
@@ -871,7 +873,8 @@ module ibex_core import ibex_pkg::*; #(
     
     // Child error aggregation
     .id_stage_new_maj_err_o(id_stage_new_maj_err),
-    .id_stage_new_min_err_o(id_stage_new_min_err)
+    .id_stage_new_min_err_o(id_stage_new_min_err),
+    .id_stage_scrub_occurred_o(id_stage_scrub_occurred)
 
     `ifdef FATORI_FI
       ,.fi_port(fi_port)
@@ -1075,7 +1078,7 @@ module ibex_core import ibex_pkg::*; #(
   endgenerate
   
   // Child error aggregation signals
-  logic wb_stage_new_maj_err, wb_stage_new_min_err;
+  logic wb_stage_new_maj_err, wb_stage_new_min_err, wb_stage_scrub_occurred;
 
   `KEEP_WB_STAGE
   ibex_wb_stage #(
@@ -1125,7 +1128,8 @@ module ibex_core import ibex_pkg::*; #(
     
     // Child error aggregation
     .wb_stage_new_maj_err_o(wb_stage_new_maj_err),
-    .wb_stage_new_min_err_o(wb_stage_new_min_err)
+    .wb_stage_new_min_err_o(wb_stage_new_min_err),
+    .wb_stage_scrub_occurred_o(wb_stage_scrub_occurred)
 
     `ifdef FATORI_FI
       ,.fi_port(fi_port)
@@ -1320,7 +1324,7 @@ module ibex_core import ibex_pkg::*; #(
   assign csr_addr   = csr_num_e'(csr_access ? alu_operand_b_ex[11:0] : 12'b0);
   
   // Child error aggregation signals
-  logic cs_registers_new_maj_err, cs_registers_new_min_err;
+  logic cs_registers_new_maj_err, cs_registers_new_min_err, cs_registers_scrub_occurred;
 
   ibex_cs_registers #(
     .DbgTriggerEn     (DbgTriggerEn),
@@ -1438,6 +1442,7 @@ module ibex_core import ibex_pkg::*; #(
     // Child error aggregation
     ,.cs_registers_new_maj_err_o(cs_registers_new_maj_err)
     ,.cs_registers_new_min_err_o(cs_registers_new_min_err)
+    ,.cs_registers_scrub_occurred_o(cs_registers_scrub_occurred)
     
     // FATORI Fault Tolerance Metrics (gated by FT_LAYER)
     `ifdef FATORI_FT_LAYER_1
@@ -2771,7 +2776,11 @@ end
                                 g_lsu_mon.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_lsu_mon.lsu_scrub_occurred;
+      assign children_scrub_occurred = g_if_mon.if_stage_scrub_occurred |
+                                        id_stage_scrub_occurred |
+                                        g_lsu_mon.lsu_scrub_occurred |
+                                        wb_stage_scrub_occurred |
+                                        cs_registers_scrub_occurred;
     end else if (`IFSTAGE_MON_N > 1) begin : g_err_if_wrapped
       // Only IF_STAGE is wrapped
       assign children_maj_err = g_if_mon.if_stage_new_maj_err |
@@ -2784,7 +2793,11 @@ end
                                 g_lsu_single.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_lsu_single.lsu_scrub_occurred;
+      assign children_scrub_occurred = g_if_mon.if_stage_scrub_occurred |
+                                        id_stage_scrub_occurred |
+                                        g_lsu_single.lsu_scrub_occurred |
+                                        wb_stage_scrub_occurred |
+                                        cs_registers_scrub_occurred;
     end else if (`LSU_MON_N > 1) begin : g_err_lsu_wrapped
       // Only LSU is wrapped
       assign children_maj_err = if_stage_new_maj_err |
@@ -2797,7 +2810,11 @@ end
                                 g_lsu_mon.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_lsu_mon.lsu_scrub_occurred;
+      assign children_scrub_occurred = if_stage_scrub_occurred |
+                                        id_stage_scrub_occurred |
+                                        g_lsu_mon.lsu_scrub_occurred |
+                                        wb_stage_scrub_occurred |
+                                        cs_registers_scrub_occurred;
     end else begin : g_err_none_wrapped
       // Neither IF_STAGE nor LSU is wrapped
       assign children_maj_err = if_stage_new_maj_err |
@@ -2810,7 +2827,11 @@ end
                                 g_lsu_single.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_lsu_single.lsu_scrub_occurred;
+      assign children_scrub_occurred = if_stage_scrub_occurred |
+                                        id_stage_scrub_occurred |
+                                        g_lsu_single.lsu_scrub_occurred |
+                                        wb_stage_scrub_occurred |
+                                        cs_registers_scrub_occurred;
     end
   endgenerate
   

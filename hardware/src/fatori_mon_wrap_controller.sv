@@ -172,6 +172,7 @@ module fatori_mon_wrap_controller #(
     logic                  perf_tbranch_o;
     logic                  controller_new_maj_err_o;
     logic                  controller_new_min_err_o;
+    logic                  controller_scrub_occurred_o;
   } controller_out_t;
 
   localparam int CW = $bits(controller_out_t);
@@ -280,7 +281,8 @@ module fatori_mon_wrap_controller #(
         
         // Child error aggregation outputs
         .controller_new_maj_err_o(c_rep[g].controller_new_maj_err_o),
-        .controller_new_min_err_o(c_rep[g].controller_new_min_err_o)
+        .controller_new_min_err_o(c_rep[g].controller_new_min_err_o),
+        .controller_scrub_occurred_o(c_rep[g].controller_scrub_occurred_o)
 
   `ifdef FATORI_FI
         ,.fi_port(fi_port)

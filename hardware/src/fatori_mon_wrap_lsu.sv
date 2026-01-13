@@ -97,6 +97,7 @@ module fatori_mon_wrap_lsu #(
     logic                     perf_store_o;
     logic                     lsu_new_maj_err_o;
     logic                     lsu_new_min_err_o;
+    logic                     lsu_scrub_occurred_o;
   } lsu_out_t;
 
 
@@ -163,7 +164,8 @@ module fatori_mon_wrap_lsu #(
         
         // Child error aggregation outputs
         .lsu_new_maj_err_o(b_rep[g].lsu_new_maj_err_o),
-        .lsu_new_min_err_o(b_rep[g].lsu_new_min_err_o)
+        .lsu_new_min_err_o(b_rep[g].lsu_new_min_err_o),
+        .lsu_scrub_occurred_o(b_rep[g].lsu_scrub_occurred_o)
 
         `ifdef FATORI_FI
         ,.fi_port(fi_port)

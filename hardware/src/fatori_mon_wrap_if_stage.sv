@@ -197,6 +197,7 @@ module fatori_mon_wrap_if_stage import ibex_pkg::*; #(
     logic                         if_busy_o;
     logic                         if_stage_new_maj_err_o;
     logic                         if_stage_new_min_err_o;
+    logic                         if_stage_scrub_occurred_o;
   } if_stage_out_t;
 
   // Total width of the output bundle in bits
@@ -320,7 +321,8 @@ module fatori_mon_wrap_if_stage import ibex_pkg::*; #(
         
         // Child error aggregation outputs
         .if_stage_new_maj_err_o(rep[g].if_stage_new_maj_err_o),
-        .if_stage_new_min_err_o(rep[g].if_stage_new_min_err_o)
+        .if_stage_new_min_err_o(rep[g].if_stage_new_min_err_o),
+        .if_stage_scrub_occurred_o(rep[g].if_stage_scrub_occurred_o)
 
 `ifdef FATORI_FI
         // Optional fault injection port (broadcast)
