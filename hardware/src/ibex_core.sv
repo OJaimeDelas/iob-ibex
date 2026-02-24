@@ -2766,34 +2766,36 @@ end
   generate
     if (`IFSTAGE_MON_N > 1 && `LSU_MON_N > 1) begin : g_err_both_wrapped
       // Both IF_STAGE and LSU are wrapped
-      assign children_maj_err = g_if_mon.if_stage_new_maj_err |
+      // if_stage_new_* are module-level wires driven via ports in g_if_mon/g_if_single;
+      // lsu_new_* are declared inside their generate branches, so hierarchical ref is required.
+      assign children_maj_err = if_stage_new_maj_err |
                                 id_stage_new_maj_err |
                                 g_lsu_mon.lsu_new_maj_err |
                                 wb_stage_new_maj_err |
                                 cs_registers_new_maj_err;
-      assign children_min_err = g_if_mon.if_stage_new_min_err |
+      assign children_min_err = if_stage_new_min_err |
                                 id_stage_new_min_err |
                                 g_lsu_mon.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_if_mon.if_stage_scrub_occurred |
+      assign children_scrub_occurred = if_stage_scrub_occurred |
                                         id_stage_scrub_occurred |
                                         g_lsu_mon.lsu_scrub_occurred |
                                         wb_stage_scrub_occurred |
                                         cs_registers_scrub_occurred;
     end else if (`IFSTAGE_MON_N > 1) begin : g_err_if_wrapped
-      // Only IF_STAGE is wrapped
-      assign children_maj_err = g_if_mon.if_stage_new_maj_err |
+      // Only IF_STAGE is wrapped; if_stage_new_* are module-level wires.
+      assign children_maj_err = if_stage_new_maj_err |
                                 id_stage_new_maj_err |
                                 g_lsu_single.lsu_new_maj_err |
                                 wb_stage_new_maj_err |
                                 cs_registers_new_maj_err;
-      assign children_min_err = g_if_mon.if_stage_new_min_err |
+      assign children_min_err = if_stage_new_min_err |
                                 id_stage_new_min_err |
                                 g_lsu_single.lsu_new_min_err |
                                 wb_stage_new_min_err |
                                 cs_registers_new_min_err;
-      assign children_scrub_occurred = g_if_mon.if_stage_scrub_occurred |
+      assign children_scrub_occurred = if_stage_scrub_occurred |
                                         id_stage_scrub_occurred |
                                         g_lsu_single.lsu_scrub_occurred |
                                         wb_stage_scrub_occurred |
