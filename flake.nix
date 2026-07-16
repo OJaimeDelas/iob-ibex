@@ -18,6 +18,7 @@
         buildInputs = ibexEnv.buildInputs;
         nativeBuildInputs = ibexEnv.nativeBuildInputs;
         shellHook = ibexEnv.shellHook;
+        SETUPTOOLS_SCM_PRETEND_VERSION = "2.4.5";
       };
     });
 }

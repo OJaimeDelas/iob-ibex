@@ -21,12 +21,12 @@
 //   - Corner cases explicitly documented below.
 // =============================================================
 `timescale 1ns/1ps
-`include "iob_reg_re_conf.vh"
+`include "iob_reg_care_conf.vh"
 
 module fatori_reg_mon #(
   // Leaf register shape
-  parameter int unsigned DATA_W  = `IOB_REG_RE_DATA_W,
-  parameter logic [DATA_W-1:0] RST_VAL = `IOB_REG_RE_RST_VAL,
+  parameter int unsigned DATA_W  = `IOB_REG_CARE_DATA_W,
+  parameter logic [DATA_W-1:0] RST_VAL = `IOB_REG_CARE_RST_VAL,
 
   // Redundancy parameters
   parameter int unsigned N       = 1,   // replicas (N<2 => no redundancy)
@@ -77,7 +77,7 @@ module fatori_reg_mon #(
 
     logic [DATA_W-1:0] q_raw;
 
-      iob_reg_re #(
+      iob_reg_care #(
         .DATA_W (DATA_W),
         .RST_VAL(RST_VAL)
       ) u_reg (
@@ -152,7 +152,7 @@ module fatori_reg_mon #(
 
         // Unique hierarchical instance names:
         // g_regs[0].u_reg, g_regs[1].u_reg, ...
-        iob_reg_re #(
+        iob_reg_care #(
           .DATA_W (DATA_W),
           .RST_VAL(RST_VAL)
         ) u_reg (

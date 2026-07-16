@@ -42,7 +42,7 @@ module iob_ibex2axi #(
   // AW Channel
   input                       dbus_awready_i,
   output logic                dbus_awvalid_o, //It's an output because CPU sends the Addr
-  output logic [AXI_ADDR_W-2 -1:0] dbus_awaddr_o,
+  output logic [AXI_ADDR_W -1:0] dbus_awaddr_o,
   output logic [2:0]          dbus_awprot_o, 
   output logic [AXI_ID_W-1:0] dbus_awid_o,
   output logic [AXI_LEN_W-1:0] dbus_awlen_o,
@@ -68,7 +68,7 @@ module iob_ibex2axi #(
   // AR Channel
   input                       dbus_arready_i,
   output logic                dbus_arvalid_o, //It's an output because CPU sends the Addr
-  output logic [AXI_ADDR_W-2-1:0] dbus_araddr_o,
+  output logic [AXI_ADDR_W -1:0] dbus_araddr_o,
   output logic [2:0]          dbus_arprot_o,
   output logic [AXI_ID_W-1:0] dbus_arid_o,
   output logic [AXI_LEN_W-1:0] dbus_arlen_o,
@@ -90,7 +90,7 @@ module iob_ibex2axi #(
   // AR Channel
   input                       ibus_arready_i,
   output logic                ibus_arvalid_o, //It's an output because CPU sends the Addr
-  output logic [AXI_ADDR_W-2-1:0] ibus_araddr_o,
+  output logic [AXI_ADDR_W -1:0] ibus_araddr_o,
   output logic [2:0]          ibus_arprot_o,
   output logic [AXI_ID_W-1:0] ibus_arid_o,
   output logic [AXI_LEN_W-1:0] ibus_arlen_o,
@@ -136,7 +136,7 @@ module iob_ibex2axi #(
   // both arready and rvalid, and they can happen in different moments. See "Grant Logic"
   assign dbus_wstrb_o = ibex_data_be_i;
 
-  assign dbus_awaddr_o = ibex_data_addr_i;
+  assign dbus_awaddr_o = ibex_data_addr_int;
   assign dbus_awvalid_o = (ibex_data_req_i & ibex_data_we_i);
 
   assign dbus_wdata_o = ibex_data_wdata_i;
@@ -159,8 +159,8 @@ module iob_ibex2axi #(
   assign dbus_arvalid_o = (ibex_data_req_i & ~ibex_data_we_i);
   assign ibus_arvalid_o = ibex_instr_req_i;
 
-  assign dbus_araddr_o = ibex_data_addr_i;
-  assign ibus_araddr_o = ibex_instr_addr_i;
+  assign dbus_araddr_o = ibex_data_addr_int;
+  assign ibus_araddr_o = ibex_instr_addr_int;
   assign dbus_rready_o  = 1'b1;
   assign ibus_rready_o  = 1'b1;
 

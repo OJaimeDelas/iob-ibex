@@ -11,7 +11,7 @@ def setup(py_params_dict):
     }
 
     attributes_dict = {
-        "version": "0.1",
+        "version": "0.1.0",
         "generate_hw": False,
         "confs": [
             {
@@ -95,7 +95,7 @@ def setup(py_params_dict):
                     "type": "axi",
                     "prefix": "ibus_",
                     "ID_W": "AXI_ID_W",
-                    "ADDR_W": "AXI_ADDR_W - 2",
+                    "ADDR_W": "AXI_ADDR_W",
                     "DATA_W": "AXI_DATA_W",
                     "LEN_W": "AXI_LEN_W",
                     "LOCK_W": 1,
@@ -108,38 +108,46 @@ def setup(py_params_dict):
                     "type": "axi",
                     "prefix": "dbus_",
                     "ID_W": "AXI_ID_W",
-                    "ADDR_W": "AXI_ADDR_W - 2",
+                    "ADDR_W": "AXI_ADDR_W",
                     "DATA_W": "AXI_DATA_W",
                     "LEN_W": "AXI_LEN_W",
                     "LOCK_W": 1,
                 },
             },
             {
-                "name": "clint_cbus_s",
-                "descr": "CLINT CSRs bus",
-                "signals": {
-                    "type": "iob",
-                    "prefix": "clint_",
-                    "ADDR_W": 16 - 2,
-                },
-            },
-            {
-                "name": "plic_cbus_s",
-                "descr": "PLIC CSRs bus",
-                "signals": {
-                    "type": "iob",
-                    "prefix": "plic_",
-                    "ADDR_W": 22 - 2,
-                },
-            },
-            {
-                "name": "plic_interrupts_i",
-                "descr": "PLIC interrupts",
+                "name": "interrupt_i",
+                "descr": "Standard RISC-V interrupt pending bits",
                 "signals": [
                     {
-                        "name": "plic_interrupts_i",
-                        "descr": "PLIC interrupts",
-                        "width": "32",
+                        "name": "msip_i",
+                        "descr": "Machine software interrupt.",
+                        "width": "1",
+                    },
+                    {
+                        "name": "mtip_i",
+                        "descr": "Machine timer interrupt.",
+                        "width": "1",
+                    },
+                    {
+                        "name": "meip_i",
+                        "descr": "Machine external interrupt.",
+                        "width": "1",
+                    },
+                    {
+                        "name": "seip_i",
+                        "descr": "Supervisor external interrupt.",
+                        "width": "1",
+                    },
+                ],
+            },
+            {
+                "name": "timebase_i",
+                "descr": "Timebase interface",
+                "signals": [
+                    {
+                        "name": "mtime_i",
+                        "descr": "Input from external 64-bit counter for time CSRs",
+                        "width": "64",
                     },
                 ],
             },
@@ -183,7 +191,18 @@ def setup(py_params_dict):
                 ],
             },
         ],
-        "subblocks": [],
+        "subblocks": [
+            {
+                # Generates the iob_reg_care module (clk + async reset + sync
+                # reset + enable) instantiated by fatori_reg_mon*.sv. The core is
+                # iob_reg; the "care" variant is selected via port_params.
+                "core_name": "iob_reg",
+                "instantiate": False,
+                "port_params": {
+                    "clk_en_rst_s": "c_a_r_e",
+                },
+            },
+        ],
         "snippets": [
             {
                 "verilog_code": """
@@ -455,7 +474,7 @@ def setup(py_params_dict):
    assign cpu_reset_neg          = !(cpu_reset);
 
    assign ibus_axi_awvalid_o = 1'b0;
-   assign ibus_axi_awaddr_o  = {AXI_ADDR_W - 2{1'b0}};
+   assign ibus_axi_awaddr_o  = {AXI_ADDR_W{1'b0}};
    assign ibus_axi_awid_o    = 1'b0;
    assign ibus_axi_awlen_o   = {AXI_LEN_W{1'b0}};
    assign ibus_axi_awsize_o  = {3{1'b0}};
@@ -469,12 +488,6 @@ def setup(py_params_dict):
    assign ibus_axi_wstrb_o   = {AXI_DATA_W / 8{1'b0}};
    assign ibus_axi_wlast_o   = 1'b0;
    assign ibus_axi_bready_o  = 1'b0;
-
-   //Integrer addresses
-   assign ibus_axi_araddr_o_int = {ibus_axi_araddr_o, 2'b0};
-   assign ibus_axi_awaddr_o_int = {ibus_axi_awaddr_o, 2'b0};
-   assign dbus_axi_araddr_o_int = {dbus_axi_araddr_o, 2'b0};
-   assign dbus_axi_awaddr_o_int = {dbus_axi_awaddr_o, 2'b0};
 
 
 """

@@ -103,7 +103,7 @@ module ibex_wb_stage #(
     // Signal only relevant if wb_valid_q set
     assign wb_done = (wb_instr_type_q == WB_INSTR_OTHER) | lsu_resp_valid_i;
 
-    `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, wb_valid_d, wb_valid_q, fi_port, 8'd160, '0, '0, wb_valid)
+    `FATORI_REG('0, !rst_ni, '1, wb_valid_d, wb_valid_q, fi_port, 8'd160, '0, '0, wb_valid)
 
     // always_ff @(posedge clk_i or negedge rst_ni) begin
     //   if (!rst_ni) begin

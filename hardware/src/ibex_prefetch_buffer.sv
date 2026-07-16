@@ -168,7 +168,7 @@ module ibex_prefetch_buffer #(
   assign stored_addr_d = instr_addr;
 
   // CPU resets with a branch, so no need to reset these addresses
-  `FATORI_REG('0, ResetAll ? !rst_ni : '0, stored_addr_en, stored_addr_d, stored_addr_q, fi_port, 8'd146, '0, '0, stored_addr)
+  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), stored_addr_en, stored_addr_d, stored_addr_q, fi_port, 8'd146, '0, '0, stored_addr)
   // if (ResetAll) begin : g_stored_addr_ra
   //   always_ff @(posedge clk_i or negedge rst_ni) begin
   //     if (!rst_ni) begin
@@ -263,10 +263,10 @@ module ibex_prefetch_buffer #(
   // Registers //
   ///////////////
 
-  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, valid_req_d,         valid_req_q,         fi_port, 8'd148, '0, '0, valid_req)
-  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, discard_req_d,       discard_req_q,       fi_port, 8'd149, '0, '0, discard_req)
-  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, rdata_outstanding_s, rdata_outstanding_q, fi_port, 8'd150, '0, '0, rdata_outstanding)
-  `FATORI_REG('0, (ResetAll ? !rst_ni : '0), '1, branch_discard_s,    branch_discard_q,    fi_port, 8'd151, '0, '0, branch_discard)
+  `FATORI_REG('0, !rst_ni, '1, valid_req_d,         valid_req_q,         fi_port, 8'd148, '0, '0, valid_req)
+  `FATORI_REG('0, !rst_ni, '1, discard_req_d,       discard_req_q,       fi_port, 8'd149, '0, '0, discard_req)
+  `FATORI_REG('0, !rst_ni, '1, rdata_outstanding_s, rdata_outstanding_q, fi_port, 8'd150, '0, '0, rdata_outstanding)
+  `FATORI_REG('0, !rst_ni, '1, branch_discard_s,    branch_discard_q,    fi_port, 8'd151, '0, '0, branch_discard)
 
   // always_ff @(posedge clk_i or negedge rst_ni) begin
   //   if (!rst_ni) begin

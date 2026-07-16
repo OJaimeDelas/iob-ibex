@@ -125,7 +125,7 @@ module fatori_reg_mon_fi #(
       assign en_eff = do_flip ? 1'b1 : en_i;
       assign d_eff  = do_flip ? (q_raw ^ mid_mask) : data_i;
 
-      iob_reg_re #(
+      iob_reg_care #(
         .DATA_W (DATA_W),
         .RST_VAL(RST_VAL)
       ) u_reg (
@@ -208,7 +208,7 @@ module fatori_reg_mon_fi #(
           assign d_eff_i  = sel_flip ? (r[i] ^ mid_mask) : data_i;
         end
 
-        iob_reg_re #(
+        iob_reg_care #(
           .DATA_W (DATA_W),
           .RST_VAL(RST_VAL)
         ) u_reg (

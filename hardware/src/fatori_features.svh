@@ -15,7 +15,7 @@
 `__FATORI_MACRO_DEF(FATORI_WSTAGE,              0)
 `__FATORI_MACRO_DEF(FATORI_BRANCH_TALU,              0)
 `__FATORI_MACRO_DEF(FATORI_BRANCH_PRED,              0)
-`__FATORI_MACRO_DEF(FATORI_REGFILE,    ibex_pkg::RegFileFPGA)
+`__FATORI_MACRO_DEF(FATORI_REGFILE,    ibex_pkg::RegFileFF)
 
 `__FATORI_MACRO_DEF(FATORI_RV32B,              ibex_pkg::RV32BNone)
 `__FATORI_MACRO_DEF(FATORI_RV32M,              ibex_pkg::RV32MNone)
@@ -29,7 +29,7 @@
 // Kept ON by default independent of groups, but still overrideable.
 `__FATORI_MACRO_DEF(FATORI_RESET_ON_MAJOR,              0) // request sync reset on any major alert
 `__FATORI_MACRO_DEF(FATORI_WAIT_SLEEP_BEFORE_RESET,     0) // wait for core sleep before requesting reset
-`__FATORI_MACRO_DEF(FATORI_FAULT_MGR,             0)
+`__FATORI_MACRO_DEF(FATORI_FAULT_MGR,             1)
 
 // METRIC_LAYER Selection
 // 0 = Baseline (mcycle, minstret only)

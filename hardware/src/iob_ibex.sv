@@ -16,9 +16,9 @@ module iob_ibex import ibex_pkg::*; #(
    input                       cke_i,
    input                       arst_i,
    // rst_i
-   //input                       rst_i,
+   input                       rst_i,
    // i_bus_m
-   output [AXI_ADDR_W - 2-1:0] ibus_axi_araddr_o,
+   output [AXI_ADDR_W-1:0] ibus_axi_araddr_o,
    output [             3-1:0] ibus_axi_arprot_o,
    output                      ibus_axi_arvalid_o,
    input                       ibus_axi_arready_i,
@@ -35,7 +35,7 @@ module iob_ibex import ibex_pkg::*; #(
    output [             4-1:0] ibus_axi_arqos_o,
    input  [      AXI_ID_W-1:0] ibus_axi_rid_i,
    input                       ibus_axi_rlast_i,
-   output [AXI_ADDR_W - 2-1:0] ibus_axi_awaddr_o,
+   output [AXI_ADDR_W-1:0] ibus_axi_awaddr_o,
    output [             3-1:0] ibus_axi_awprot_o,
    output                      ibus_axi_awvalid_o,
    input                       ibus_axi_awready_i,
@@ -56,7 +56,7 @@ module iob_ibex import ibex_pkg::*; #(
    output                      ibus_axi_wlast_o,
    input  [      AXI_ID_W-1:0] ibus_axi_bid_i,
    // d_bus_m
-   output [AXI_ADDR_W - 2-1:0] dbus_axi_araddr_o,
+   output [AXI_ADDR_W-1:0] dbus_axi_araddr_o,
    output [             3-1:0] dbus_axi_arprot_o,
    output                      dbus_axi_arvalid_o,
    input                       dbus_axi_arready_i,
@@ -73,7 +73,7 @@ module iob_ibex import ibex_pkg::*; #(
    output [             4-1:0] dbus_axi_arqos_o,
    input  [      AXI_ID_W-1:0] dbus_axi_rid_i,
    input                       dbus_axi_rlast_i,
-   output [AXI_ADDR_W - 2-1:0] dbus_axi_awaddr_o,
+   output [AXI_ADDR_W-1:0] dbus_axi_awaddr_o,
    output [             3-1:0] dbus_axi_awprot_o,
    output                      dbus_axi_awvalid_o,
    input                       dbus_axi_awready_i,
@@ -93,24 +93,13 @@ module iob_ibex import ibex_pkg::*; #(
    output [             4-1:0] dbus_axi_awqos_o,
    output                      dbus_axi_wlast_o,
    input  [      AXI_ID_W-1:0] dbus_axi_bid_i,
-   // clint_cbus_s
-   input                       clint_iob_valid_i,
-   input  [            14-1:0] clint_iob_addr_i,
-   input  [            32-1:0] clint_iob_wdata_i,
-   input  [             4-1:0] clint_iob_wstrb_i,
-   output                      clint_iob_rvalid_o,
-   output [            32-1:0] clint_iob_rdata_o,
-   output                      clint_iob_ready_o,
-   // plic_cbus_s
-   input                       plic_iob_valid_i,
-   input  [            20-1:0] plic_iob_addr_i,
-   input  [            32-1:0] plic_iob_wdata_i,
-   input  [             4-1:0] plic_iob_wstrb_i,
-   output                      plic_iob_rvalid_o,
-   output [            32-1:0] plic_iob_rdata_o,
-   output                      plic_iob_ready_o,
-   // plic_interrupts_i
-   input  [            32-1:0] plic_interrupts_i,
+   // interrupt_i
+   input                       msip_i,
+   input                       mtip_i,
+   input                       meip_i,
+   input                       seip_i,
+   // timebase_i
+   input  [            64-1:0] mtime_i,
    
    // UART1 for fault injection (unconditional, handled internally)
    input  logic                uart1_rxd_i,
@@ -165,12 +154,6 @@ module iob_ibex import ibex_pkg::*; #(
    wire [     IBEX_DATA_W-1:0] instr_rdata_i;
    wire [IBEX_INTG_DATA_W-1:0] instr_rdata_intg_i;
    wire                        instr_err_i;
-
-   // full addresses
-   wire [AXI_ADDR_W -1:0] ibus_axi_araddr_o_int;
-   wire [AXI_ADDR_W -1:0] ibus_axi_awaddr_o_int;
-   wire [AXI_ADDR_W -1:0] dbus_axi_araddr_o_int;
-   wire [AXI_ADDR_W -1:0] dbus_axi_awaddr_o_int;
 
    // Instruction Bus
    iob_ibex2axi #(
@@ -387,7 +370,7 @@ module iob_ibex import ibex_pkg::*; #(
    parameter bit ICacheScramble = 1'b0;
    parameter bit BranchPredictor = `FATORI_BRANCH_PRED;
    parameter bit DbgTriggerEn = 1'b0;
-   parameter bit SecureIbex = 1'b1; //UNUSED
+   parameter bit SecureIbex = 1'b0; //UNUSED
    parameter bit PMPEnable = `FATORI_PMP;
    parameter int unsigned PMPGranularity = 0;
    parameter int unsigned PMPNumRegions = 16;
@@ -652,12 +635,11 @@ module iob_ibex import ibex_pkg::*; #(
    assign instr_addr_o          = instr_addr_int[31:2];
    assign data_addr_o           = data_addr_int[31:2];
 
-   //assign cpu_reset             = (rst_i) | (arst_i);
-   assign cpu_reset             = (arst_i);
+   assign cpu_reset             = (rst_i) | (arst_i);
    assign cpu_reset_neg         = !(cpu_reset);
 
    assign ibus_axi_awvalid_o    = 1'b0;
-   assign ibus_axi_awaddr_o     = {AXI_ADDR_W - 2{1'b0}};
+   assign ibus_axi_awaddr_o     = {AXI_ADDR_W{1'b0}};
    assign ibus_axi_awid_o       = 1'b0;
    assign ibus_axi_awlen_o      = {AXI_LEN_W{1'b0}};
    assign ibus_axi_awsize_o     = {3{1'b0}};
@@ -671,11 +653,5 @@ module iob_ibex import ibex_pkg::*; #(
    assign ibus_axi_wstrb_o      = {AXI_DATA_W / 8{1'b0}};
    assign ibus_axi_wlast_o      = 1'b0;
    assign ibus_axi_bready_o     = 1'b0;
-
-   //Integrer addresses
-   assign ibus_axi_araddr_o_int = {ibus_axi_araddr_o, 2'b0};
-   assign ibus_axi_awaddr_o_int = {ibus_axi_awaddr_o, 2'b0};
-   assign dbus_axi_araddr_o_int = {dbus_axi_araddr_o, 2'b0};
-   assign dbus_axi_awaddr_o_int = {dbus_axi_awaddr_o, 2'b0};
 
 endmodule
