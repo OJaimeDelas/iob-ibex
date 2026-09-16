@@ -410,7 +410,7 @@ module iob_ibex import ibex_pkg::*; #(
       .ram_cfg_i  ('0),
 
       .hart_id_i  ('0),
-      .boot_addr_i(32'h40000000),
+      .boot_addr_i(`IOB_IBEX_RESET_ADDR),
 
       // Instruction memory interface
       .instr_req_o       (instr_req_o),

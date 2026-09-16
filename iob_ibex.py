@@ -9,6 +9,9 @@ def setup(py_params_dict):
         "uncached_start_addr": 0x00000000,
         "uncached_size": 2**32,
     }
+    for name in params:
+        if name in py_params_dict:
+            params[name] = int(py_params_dict[name])
 
     attributes_dict = {
         "version": "0.1.0",
@@ -69,6 +72,17 @@ def setup(py_params_dict):
                 "val": 0,
                 "min": 0,
                 "max": 7,
+            },
+            {
+                # Ibex fetches from {boot_addr_i[31:8], 8'h80} and asserts
+                # boot_addr_i[7:0] == 0, so this is the bootrom base and the
+                # first instruction is the one at bootrom offset 0x80.
+                "name": "RESET_ADDR",
+                "descr": "Boot address: reset fetches from RESET_ADDR + 0x80",
+                "type": "M",
+                "val": "32'h%08x" % params["reset_addr"],
+                "min": "NA",
+                "max": "NA",
             },
         ],
         "ports": [
