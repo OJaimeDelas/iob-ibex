@@ -19,7 +19,6 @@ module iob_ibex import ibex_pkg::*; #(
    input                       rst_i,
    // i_bus_m
    output [AXI_ADDR_W-1:0] ibus_axi_araddr_o,
-   output [             3-1:0] ibus_axi_arprot_o,
    output                      ibus_axi_arvalid_o,
    input                       ibus_axi_arready_i,
    input  [    AXI_DATA_W-1:0] ibus_axi_rdata_i,
@@ -36,7 +35,6 @@ module iob_ibex import ibex_pkg::*; #(
    input  [      AXI_ID_W-1:0] ibus_axi_rid_i,
    input                       ibus_axi_rlast_i,
    output [AXI_ADDR_W-1:0] ibus_axi_awaddr_o,
-   output [             3-1:0] ibus_axi_awprot_o,
    output                      ibus_axi_awvalid_o,
    input                       ibus_axi_awready_i,
    output [    AXI_DATA_W-1:0] ibus_axi_wdata_o,
@@ -57,7 +55,6 @@ module iob_ibex import ibex_pkg::*; #(
    input  [      AXI_ID_W-1:0] ibus_axi_bid_i,
    // d_bus_m
    output [AXI_ADDR_W-1:0] dbus_axi_araddr_o,
-   output [             3-1:0] dbus_axi_arprot_o,
    output                      dbus_axi_arvalid_o,
    input                       dbus_axi_arready_i,
    input  [    AXI_DATA_W-1:0] dbus_axi_rdata_i,
@@ -74,7 +71,6 @@ module iob_ibex import ibex_pkg::*; #(
    input  [      AXI_ID_W-1:0] dbus_axi_rid_i,
    input                       dbus_axi_rlast_i,
    output [AXI_ADDR_W-1:0] dbus_axi_awaddr_o,
-   output [             3-1:0] dbus_axi_awprot_o,
    output                      dbus_axi_awvalid_o,
    input                       dbus_axi_awready_i,
    output [    AXI_DATA_W-1:0] dbus_axi_wdata_o,
@@ -99,11 +95,7 @@ module iob_ibex import ibex_pkg::*; #(
    input                       meip_i,
    input                       seip_i,
    // timebase_i
-   input  [            64-1:0] mtime_i,
-   
-   // UART1 for fault injection (unconditional, handled internally)
-   input  logic                uart1_rxd_i,
-   output logic                uart1_txd_o
+   input  [            64-1:0] mtime_i
   
   // FATORI Fault Tolerance Metrics Outputs (gated by FT_LAYER)
   `ifdef FATORI_FT_LAYER_1
@@ -128,6 +120,11 @@ module iob_ibex import ibex_pkg::*; #(
 
 );
 
+
+   // AXI prot outputs and fault-injection UART1 are internal (not in the py2hwsw port list)
+   wire [3-1:0] ibus_axi_arprot_o, ibus_axi_awprot_o, dbus_axi_arprot_o, dbus_axi_awprot_o;
+   wire         uart1_rxd_i = 1'b1;  // idle
+   wire         uart1_txd_o;
 
    // cpu_reset
    wire                        cpu_reset_neg;
