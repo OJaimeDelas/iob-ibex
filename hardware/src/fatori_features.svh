@@ -18,7 +18,7 @@
 `__FATORI_MACRO_DEF(FATORI_REGFILE,    ibex_pkg::RegFileFF)
 
 `__FATORI_MACRO_DEF(FATORI_RV32B,              ibex_pkg::RV32BNone)
-`__FATORI_MACRO_DEF(FATORI_RV32M,              ibex_pkg::RV32MNone)
+`__FATORI_MACRO_DEF(FATORI_RV32M,              ibex_pkg::RV32MSingleCycle)
 `__FATORI_MACRO_DEF(FATORI_RV32E,              0)
 
 `__FATORI_MACRO_DEF(FATORI_MHPMCOUNTER_NUM,              10)
